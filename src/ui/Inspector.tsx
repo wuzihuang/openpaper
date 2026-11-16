@@ -73,7 +73,7 @@ function NumberField({
         onBlur={() => {
           if (disabled) return
           const parsed = Number.parseFloat(draft)
-          if (Number.isFinite(parsed)) onCommit(parsed)
+          if (Number.isFinite(parsed) && parsed !== value) onCommit(parsed)
           else setDraft(format(value))
         }}
         onKeyDown={(event) => {
@@ -796,17 +796,47 @@ function ShaderFillEditor({ fill, patchFill }: { fill: Fill; patchFill: (p: Part
     return typeof v === 'number' ? v : 0
   }
   const numValue = (key: string, fallback: number) => fill.shaderParams?.[key] ?? fallback
+  const [pickOpen, setPickOpen] = useState<DOMRect | null>(null)
   return (
     <>
-      <SelectField
-        label="Shader"
-        value={def.id}
-        options={SHADERS.map((s) => [s.id, s.name] as [string, string])}
-        onChange={(v) => {
-          const next = shaderDef(v)
-          if (next) patchFill(presetFill(next, next.presets[0]))
-        }}
-      />
+      <button
+        className="chip-field shader-pick"
+        onClick={(e) => setPickOpen((e.currentTarget as HTMLElement).getBoundingClientRect())}
+      >
+        <span className="chip-label">Shader</span>
+        <img className="shader-pick-thumb" src={`/shader-thumbs/${def.id}.webp`} alt="" />
+        <span className="shader-pick-name">{def.name}</span>
+        <Icon name="chevron-down" size={9} />
+      </button>
+      {pickOpen && (
+        <>
+          <div className="popup-overlay" onPointerDown={() => setPickOpen(null)} />
+          <div
+            className="menu-popup shader-grid"
+            style={{
+              position: 'fixed',
+              left: Math.max(8, pickOpen.right - 236),
+              top: Math.min(window.innerHeight - 320, pickOpen.bottom + 4),
+            }}
+          >
+            {SHADERS.map((s) => (
+              <button
+                key={s.id}
+                className="shader-thumb"
+                data-active={s.id === def.id}
+                onClick={() => {
+                  const next = shaderDef(s.id)
+                  if (next) patchFill(presetFill(next, next.presets[0]))
+                  setPickOpen(null)
+                }}
+              >
+                <img src={`/shader-thumbs/${s.id}.webp`} alt={s.name} loading="lazy" />
+                <span>{s.name}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
       {def.presets.length > 1 && (
         <SelectField
           label="Preset"
