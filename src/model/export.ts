@@ -175,7 +175,7 @@ function makeSvg(ids: string[], docOverride?: Doc) {
  * embeddedFontCss (handled inside rasterizeSvg). */
 function svgWithFontImport(svg: string, fontFamilies?: string[]): string {
   const url = googleFontsUrl(fontFamilies ?? [])
-  return url ? svg.replace(/<svg[^>]*>/, (open) => `${open}<style>@import url("${url}")</style>`) : svg
+  return url ? svg.replace(/<svg[^>]*>/, (open) => `${open}<style>@import url("${escapeXml(url)}")</style>`) : svg
 }
 
 /** Renders a file card thumbnail (Paper FileThumbnail): first page's artboards as SVG. */
