@@ -29,12 +29,16 @@ export function normalizeCssColor(value: string): string | null {
     try {
       const ctx = document.createElement('canvas').getContext('2d')
       if (!ctx) return null
-      // Sentinel: invalid assignments are ignored and leave fillStyle at the
-      // sentinel, which distinguishes "#12345"-style garbage from real colors.
+      // Two sentinels: an invalid assignment is ignored, so if both probes keep
+      // their own sentinel the input is unparseable. A valid color equal to one
+      // sentinel still resolves through the other probe.
       ctx.fillStyle = '#010203'
       ctx.fillStyle = v
+      const first = ctx.fillStyle as string
+      ctx.fillStyle = '#040506'
+      ctx.fillStyle = v
       const parsed = ctx.fillStyle as string
-      if (parsed === '#010203' && v.toLowerCase() !== '#010203') return null
+      if (first === '#010203' && parsed === '#040506') return null
       const hex = /^#([0-9a-f]{6}|[0-9a-f]{8})$/i.exec(parsed)
       if (hex) return parsed.toLowerCase()
       const rgb = /^rgba?\(([^)]+)\)$/.exec(parsed)?.[1].split(',').map((n) => Number(n.trim()))
