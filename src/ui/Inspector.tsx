@@ -691,6 +691,11 @@ function FillRow({ fill, index, onPatch }: { fill: Fill; index: number; onPatch:
         ]}
         onChange={setType}
       />
+      <NumberField
+        label="Opacity"
+        value={Math.round((fill.opacity ?? 1) * 100)}
+        onCommit={(v) => patchFill({ opacity: Math.min(1, Math.max(0, v / 100)) })}
+      />
       {fill.type === 'shader' && <ShaderFillEditor fill={fill} patchFill={patchFill} />}
       {fill.type === 'pattern' && (
         <>

@@ -97,6 +97,13 @@ function makeSvg(ids: string[], docOverride?: Doc) {
     return `url(#${id})`
   }
 
+  /** Per-fill opacity on the top fill → SVG `fill-opacity` attribute. */
+  const fillOpacityAttr = (node: DocNode): string => {
+    const top = fillsOf(node).filter((fill) => fill.isVisible)[0]
+    const o = top?.opacity
+    return o !== undefined && o < 1 ? ` fill-opacity="${o}"` : ''
+  }
+
   const nodes = { ...doc.nodes }
   for (const inst of Object.values(nodes)) {
     if (inst.kind !== 'instance' || !inst.overrides) continue
@@ -112,6 +119,7 @@ function makeSvg(ids: string[], docOverride?: Doc) {
     const x = rect.x - bounds.x
     const y = rect.y - bounds.y
     const { stroke, shadow } = paint(node)
+    const fillOpacity = fillOpacityAttr(node)
     const opacity = node.opacity !== undefined && node.opacity !== 1 ? ` opacity="${node.opacity}"` : ''
     const blend = node.blendMode && node.blendMode !== 'normal' ? ` style="mix-blend-mode:${escapeXml(node.blendMode)}"` : ''
     let clip = ''
@@ -122,11 +130,11 @@ function makeSvg(ids: string[], docOverride?: Doc) {
     }
     let content = ''
     if (node.kind === 'ellipse') {
-      content = `<ellipse cx="${x + rect.width / 2}" cy="${y + rect.height / 2}" rx="${rect.width / 2}" ry="${rect.height / 2}" fill="${escapeXml(fillAttr(node))}"${stroke}${shadow}/>`
+      content = `<ellipse cx="${x + rect.width / 2}" cy="${y + rect.height / 2}" rx="${rect.width / 2}" ry="${rect.height / 2}" fill="${escapeXml(fillAttr(node))}"${fillOpacity}${stroke}${shadow}/>`
     } else if (node.kind === 'vector') {
       const d = vectorPathD(node.points ?? [], node.closed !== false)
       // Points are stored in node-local coordinates; translate to export origin.
-      content = `<g transform="translate(${x} ${y})"><path d="${escapeXml(d)}" fill="${escapeXml(fillAttr(node))}"${stroke}${shadow}/></g>`
+      content = `<g transform="translate(${x} ${y})"><path d="${escapeXml(d)}" fill="${escapeXml(fillAttr(node))}"${fillOpacity}${stroke}${shadow}/></g>`
     } else if (node.kind === 'text') {
       const fontSize = node.fontSize ?? 14
       const lineHeight = node.lineHeight ?? 1.4
@@ -137,7 +145,7 @@ function makeSvg(ids: string[], docOverride?: Doc) {
       const spans = lines.map((line, index) => `<tspan x="${textX}" y="${y + fontSize + index * fontSize * lineHeight}">${escapeXml(line)}</tspan>`).join('')
       content = `<text fill="${escapeXml(node.color ?? '#111111')}" font-family="${escapeXml(node.fontFamily ?? 'Inter')}" font-size="${fontSize}" font-weight="${node.fontWeight ?? 400}" letter-spacing="${node.letterSpacing ?? 0}" text-anchor="${anchor}"${shadow}>${spans}</text>`
     } else {
-      content = `<rect x="${x}" y="${y}" width="${rect.width}" height="${rect.height}" rx="${node.radius ?? 0}" fill="${escapeXml(fillAttr(node))}"${stroke}${shadow}/>`
+      content = `<rect x="${x}" y="${y}" width="${rect.width}" height="${rect.height}" rx="${node.radius ?? 0}" fill="${escapeXml(fillAttr(node))}"${fillOpacity}${stroke}${shadow}/>`
       if (node.kind === 'image' && node.imageSrc) {
         const fit = node.imageFit === 'cover' ? 'xMidYMid slice' : node.imageFit === 'contain' ? 'xMidYMid meet' : 'none'
         content += `<image href="${escapeXml(node.imageSrc)}" x="${x}" y="${y}" width="${rect.width}" height="${rect.height}" preserveAspectRatio="${fit}"${clip}/>`

@@ -274,3 +274,9 @@ npx tsc --noEmit && npx vite build
 - 从 shaders.paper.design 提取全部 30 种 shader 的官方预览图 → `public/shader-thumbs/<id>.webp`。
 - Inspector shader 行改为缩略图 chip（图+名+⌄），点击弹出 3 列缩略图网格（`menu-popup` 容器），当前项高亮；点外部关闭（`popup-overlay`）。
 - 验证：`?doc=` 种子文档 → 选中节点 → 打开网格 → 切 Swirl，参数面板同步。
+
+## Per-fill opacity（填充行透明度）
+
+- `Fill.opacity`（0–1）：CSS 侧在 `fillToCss` 内用 `color-mix` 折进 solid/gradient/pattern 颜色；shader 填充走元素 `opacity`；SVG 导出输出 `fill-opacity`。
+- Inspector 每个填充行新增 Opacity 数值字段（0–100，可 scrub）。
+- 已知差异：image 填充的透明度在纯 CSS background 层无法折叠，暂不生效（Paper 用图层合成实现）。

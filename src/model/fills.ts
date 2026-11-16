@@ -31,12 +31,17 @@ export function fillsOf(node: DocNode): Fill[] {
   return []
 }
 
+/** Fold a per-fill opacity into a CSS color (SVG export uses fill-opacity instead). */
+function withAlpha(color: string, opacity: number): string {
+  return opacity >= 1 ? color : `color-mix(in srgb, ${color} ${round(opacity * 100)}%, transparent)`
+}
+
 /** CSS `<color-hint>` interpolation hint between two stops, matching Paper's midpoint. */
-function stopSequence(stops: GradientStop[]): string {
+function stopSequence(stops: GradientStop[], opacity = 1): string {
   const parts: string[] = []
   for (let i = 0; i < stops.length; i++) {
     const stop = stops[i]
-    parts.push(`${stop.color} ${round(stop.position * 100)}%`)
+    parts.push(`${withAlpha(stop.color, opacity)} ${round(stop.position * 100)}%`)
     const next = stops[i + 1]
     if (next && stop.midpoint !== 0.5) {
       const hint = stop.position + (next.position - stop.position) * stop.midpoint
@@ -60,9 +65,10 @@ function interpolationCss(fill: Fill): string {
 
 export function fillToCss(fill: Fill): string | null {
   if (!fill.isVisible) return null
-  if (fill.type === 'solid') return `linear-gradient(${fill.color ?? '#dddddd'} 0 0)`
+  const opacity = fill.opacity ?? 1
+  if (fill.type === 'solid') return `linear-gradient(${withAlpha(fill.color ?? '#dddddd', opacity)} 0 0)`
   if (fill.type === 'gradient') {
-    const stops = stopSequence(fill.stops ?? [])
+    const stops = stopSequence(fill.stops ?? [], opacity)
     const shape = fill.shape ?? 'linear'
     const interp = interpolationCss(fill)
     if (shape === 'linear') return `linear-gradient(${fill.angle ?? 180}deg${interp}, ${stops})`
@@ -89,7 +95,7 @@ const noiseSvg = (color: string) =>
 
 /** Paper shader approximations: tiling pattern fills rendered via CSS backgrounds. */
 function patternCss(fill: Fill): string {
-  const c = fill.color ?? '#000000'
+  const c = withAlpha(fill.color ?? '#000000', fill.opacity ?? 1)
   const s = Math.max(4, fill.patternSize ?? 12)
   switch (fill.pattern ?? 'dot-grid') {
     case 'lines':

@@ -42,6 +42,8 @@ export interface Fill {
   shaderExtraColors?: Record<string, string>
   /** Paper per-fill blend — composited via CSS background-blend-mode. */
   blendMode?: string
+  /** Per-fill opacity 0–1 (default 1). */
+  opacity?: number
 }
 
 /** Paper exportMeta.entries — per-node export presets (scale + format + filename suffix). */
