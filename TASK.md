@@ -262,3 +262,9 @@ npx tsc --noEmit && npx vite build
 - **工具栏**：浮动白色胶囊工具栏（此前已完成，与 Paper 一致）。
 
 参照素材：app.paper.design 公开 CSS（`/assets/styles-*.css`）中的真实 token 值 + 官网 mockup 截图。
+
+## Paper 真实资源提取续批（光标全集 + 控件样式）
+
+- 从 app.paper.design 样式表补齐全部 32 个 `--cursor-*` webp 光标（此前只有 14 个）；接入：pen/text/comment/zoom(⌥=缩小) 工具光标、Alt 悬停/拖动 duplicate、Shift 轴锁 arrow-x/y、面板分隔条 resize-col/row。
+- 数字字段 label 拖动调值（Paper scrub 手势 + cursor-scrubbing）：拖 label 左右滑改数，Shift=大步长，松开一次性提交（单撤销步）。
+- Checkbox 换成 Paper `.checkbox-root` 样式：16px 控件块、`--shadow-checkbox` 真实复合阴影、superellipse 角、选中蓝色+白色对勾；`switch` 滑块样式按 Paper `.switch-root` 就绪备用。

@@ -31,9 +31,39 @@ function NumberField({
   useEffect(() => {
     setDraft(format(value))
   }, [value, decimals])
+  // Paper scrub: drag the field label sideways to scrub the number.
+  const scrubRef = useRef<{ x: number; start: number; value: number } | null>(null)
+  const onScrubDown = (event: React.PointerEvent) => {
+    if (disabled) return
+    event.preventDefault()
+    scrubRef.current = { x: event.clientX, start: event.clientX, value }
+    const el = event.currentTarget as HTMLElement
+    el.setPointerCapture(event.pointerId)
+    const onMove = (e: PointerEvent) => {
+      const s = scrubRef.current
+      if (!s) return
+      const step = e.shiftKey ? 10 : 1
+      const next = s.value + (e.clientX - s.x) * step * (decimals > 0 ? 0.1 : 1)
+      s.x = e.clientX
+      s.value = next
+      setDraft(format(next))
+    }
+    const onUp = (e: PointerEvent) => {
+      const s = scrubRef.current
+      scrubRef.current = null
+      el.removeEventListener('pointermove', onMove)
+      el.removeEventListener('pointerup', onUp)
+      if (s && Math.abs(e.clientX - s.start) > 2) onCommit(decimals > 0 ? Math.round(s.value * 10 ** decimals) / 10 ** decimals : Math.round(s.value))
+      else setDraft(format(value))
+    }
+    el.addEventListener('pointermove', onMove)
+    el.addEventListener('pointerup', onUp)
+  }
   return (
     <label className="chip-field">
-      <span className="chip-label">{label}</span>
+      <span className="chip-label" onPointerDown={onScrubDown} style={{ cursor: 'url(/cursors/cursor-scrubbing.webp) 16 16, ew-resize' }}>
+        {label}
+      </span>
       <input
         className="chip-input"
         value={disabled ? '' : draft}
