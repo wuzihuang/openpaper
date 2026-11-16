@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { DocNode, ExportEntry, Fill, FlexLayout, GradientShape, LayoutGuide, NodeFilter, SizingMode } from '../model/types'
 import { defaultStops, fillsOf, fillToCss, gradientFill, imageFill, solidFill } from '../model/fills'
-import { SHADERS, shaderDef } from '../model/shaders'
+import { SHADERS, presetFill, presetMatch, shaderDef } from '../model/shaders'
 import { chooseImage, deleteComment, moveNodes, replyToComment, scaleSelection, selectionBounds, updateComment, updateNode, useEditor } from '../model/store'
 import { focusComment } from '../model/store'
 import { copySelectionAsPng, downloadSelectionPdf, downloadSelectionRaster, downloadSelectionSvg, downloadShaderVideo, exportCombinedPdf, exportNodeEntries } from '../model/export'
@@ -641,7 +641,10 @@ function FillRow({ fill, index, onPatch }: { fill: Fill; index: number; onPatch:
     if (v === 'solid') patchFill({ type: 'solid', color: fill.color ?? '#dddddd' })
     else if (v === 'image') patchFill({ ...imageFill(fill.imageSrc ?? '', fill.imageFit ?? 'fill') })
     else if (v === 'pattern') patchFill({ type: 'pattern', pattern: fill.pattern ?? 'dot-grid', color: fill.color ?? '#000000', patternSize: fill.patternSize ?? 12 })
-    else if (v === 'shader') patchFill({ type: 'shader', shaderKind: fill.shaderKind ?? 'mesh-gradient', shaderColors: fill.shaderColors ?? ['#ff7a18', '#509bf5', '#af2896'], shaderBack: fill.shaderBack })
+    else if (v === 'shader') {
+      const d = shaderDef(fill.shaderKind) ?? SHADERS[0]
+      patchFill(presetFill(d, d.presets[0]))
+    }
     else patchFill({ ...gradientFill(v as GradientShape), stops: fill.stops ?? defaultStops() })
   }
   return (
@@ -754,51 +757,120 @@ function FillRow({ fill, index, onPatch }: { fill: Fill; index: number; onPatch:
   )
 }
 
-/** WebGL shader fill editor — palette + shader params (model/shaders.ts). */
+/** Official Paper shader fill editor — palette + per-shader params
+ * (model/shaders.ts registry over @paper-design/shaders-react). */
 function ShaderFillEditor({ fill, patchFill }: { fill: Fill; patchFill: (p: Partial<Fill>) => void }) {
-  const def = shaderDef(fill.shaderKind)
+  const def = shaderDef(fill.shaderKind) ?? SHADERS[0]
   const colors = fill.shaderColors ?? []
   const setColor = (i: number, c: string) => patchFill({ shaderColors: colors.map((v, j) => (j === i ? c : v)) })
+  const paramDefault = (key: string) => {
+    const v = def.defaults[key]
+    return typeof v === 'number' ? v : 0
+  }
+  const numValue = (key: string, fallback: number) => fill.shaderParams?.[key] ?? fallback
   return (
     <>
       <SelectField
         label="Shader"
-        value={fill.shaderKind ?? 'mesh-gradient'}
+        value={def.id}
         options={SHADERS.map((s) => [s.id, s.name] as [string, string])}
-        onChange={(v) => patchFill({ shaderKind: v })}
+        onChange={(v) => {
+          const next = shaderDef(v)
+          if (next) patchFill(presetFill(next, next.presets[0]))
+        }}
       />
-      {colors.map((c, i) => (
-        <div key={i} className="row-align">
-          <ColorField label={`Color ${i + 1}`} value={c} fallback="#888888" onCommit={(v) => setColor(i, v)} />
-          <button
-            className="inspector-action"
-            disabled={colors.length <= 1}
-            onClick={() => patchFill({ shaderColors: colors.filter((_, j) => j !== i) })}
-            data-tooltip="Remove color"
-          >
-            <Icon name="minus" size={10} />
-          </button>
-        </div>
-      ))}
-      {colors.length < 10 && (
-        <button className="inspector-action" onClick={() => patchFill({ shaderColors: [...colors, '#a78bfa'] })}>
-          <Icon name="plus" size={10} />Add color
-        </button>
+      {def.presets.length > 1 && (
+        <SelectField
+          label="Preset"
+          value={(() => {
+            const i = def.presets.findIndex((p) => presetMatch(fill, def, p))
+            return i >= 0 ? String(i) : ''
+          })()}
+          options={[['', 'Custom'], ...def.presets.map((p, i) => [String(i), p.name] as [string, string])]}
+          onChange={(v) => {
+            if (v !== '') patchFill(presetFill(def, def.presets[Number(v)]))
+          }}
+        />
       )}
-      {def?.extraColorUniforms?.map((c) => (
-        <ColorField key={c.key} label={c.label} value={fill.shaderExtraColors?.[c.key] ?? '#ffffff'} fallback="#ffffff" onCommit={(v) => patchFill({ shaderExtraColors: { ...(fill.shaderExtraColors ?? {}), [c.key]: v } })} />
-      ))}
-      {def?.hasBack && (
-        <ColorField label="Background" value={fill.shaderBack ?? '#111111'} fallback="#111111" onCommit={(v) => patchFill({ shaderBack: v })} />
+      {def.maxColors > 0 && (
+        <>
+          {colors.map((c, i) => (
+            <div key={i} className="row-align">
+              <ColorField label={`Color ${i + 1}`} value={c} fallback="#888888" onCommit={(v) => setColor(i, v)} />
+              <button
+                className="inspector-action"
+                disabled={colors.length <= 1}
+                onClick={() => patchFill({ shaderColors: colors.filter((_, j) => j !== i) })}
+                data-tooltip="Remove color"
+              >
+                <Icon name="minus" size={10} />
+              </button>
+            </div>
+          ))}
+          {colors.length < def.maxColors && (
+            <button className="inspector-action" onClick={() => patchFill({ shaderColors: [...colors, '#a78bfa'] })}>
+              <Icon name="plus" size={10} />Add color
+            </button>
+          )}
+        </>
       )}
-      {def?.params.map((p) => (
-        <NumberField
-          key={p.key}
-          label={p.label}
-          value={fill.shaderParams?.[p.key] ?? p.default}
-          onCommit={(v) => patchFill({ shaderParams: { ...(fill.shaderParams ?? {}), [p.key]: Math.min(p.max, Math.max(p.min, v)) } })}
+      {def.extraColors?.map((c) => (
+        <ColorField
+          key={c.key}
+          label={c.label}
+          value={fill.shaderExtraColors?.[c.key] ?? (def.defaults[c.key] as string) ?? '#ffffff'}
+          fallback="#ffffff"
+          onCommit={(v) => patchFill({ shaderExtraColors: { ...(fill.shaderExtraColors ?? {}), [c.key]: v } })}
         />
       ))}
+      {def.hasBack && (
+        <ColorField
+          label="Background"
+          value={fill.shaderBack ?? (def.defaults.colorBack as string) ?? '#111111'}
+          fallback="#111111"
+          onCommit={(v) => patchFill({ shaderBack: v })}
+        />
+      )}
+      {def.image && (
+        <button className="inspector-action" onClick={() => pickFillImage((src) => patchFill({ shaderImage: src }))}>
+          <Icon name="image" size={12} />{fill.shaderImage ? 'Replace image' : 'Select image'}
+        </button>
+      )}
+      {def.params.map((p) =>
+        p.bool ? (
+          <SelectField
+            key={p.key}
+            label={p.label}
+            value={numValue(p.key, (def.defaults[p.key] ? 1 : 0)) === 1 ? '1' : '0'}
+            options={[['0', 'Off'], ['1', 'On']]}
+            onChange={(v) => patchFill({ shaderParams: { ...(fill.shaderParams ?? {}), [p.key]: Number(v) } })}
+          />
+        ) : p.enum ? (
+          <SelectField
+            key={p.key}
+            label={p.label}
+            value={String(numValue(p.key, p.enum[String(def.defaults[p.key])] ?? 0))}
+            options={Object.entries(p.enum).map(([name, v]) => [String(v), name] as [string, string])}
+            onChange={(v) => patchFill({ shaderParams: { ...(fill.shaderParams ?? {}), [p.key]: Number(v) } })}
+          />
+        ) : (
+          <NumberField
+            key={p.key}
+            label={p.label}
+            value={numValue(p.key, paramDefault(p.key))}
+            decimals={p.step < 1 ? 2 : 0}
+            onCommit={(v) => patchFill({ shaderParams: { ...(fill.shaderParams ?? {}), [p.key]: Math.min(p.max, Math.max(p.min, v)) } })}
+          />
+        ),
+      )}
+      {def.animated && (
+        <NumberField
+          label="Speed"
+          value={numValue('speed', (def.defaults.speed as number) ?? 1)}
+          decimals={2}
+          onCommit={(v) => patchFill({ shaderParams: { ...(fill.shaderParams ?? {}), speed: Math.min(3, Math.max(0, v)) } })}
+        />
+      )}
     </>
   )
 }

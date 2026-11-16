@@ -28,15 +28,17 @@ export interface Fill {
   pattern?: PatternKind
   /** Tile size in px for pattern fills. */
   patternSize?: number
-  /** Paper WebGL shader fills: shader id in model/shaders.ts. */
+  /** Paper WebGL shader fills: shader id in model/shaders.ts (@paper-design/shaders). */
   shaderKind?: string
-  /** Palette colors bound to the shader's u_colors uniform. */
+  /** Palette colors bound to the shader's colors prop (u_colors uniform). */
   shaderColors?: string[]
-  /** Background color for shaders with u_colorBack. */
+  /** Background color for shaders with colorBack (u_colorBack). */
   shaderBack?: string
-  /** Numeric shader uniforms (u_distortion, u_swirl, u_count…). */
+  /** Source image URL/dataURL for image-sampling shaders (FlutedGlass, Water…). */
+  shaderImage?: string
+  /** Numeric shader props keyed by component prop name (distortion, swirl, count…); enum/bool props stored as numbers. */
   shaderParams?: Record<string, number>
-  /** Extra color uniforms keyed by uniform name (e.g. u_colorBloom). */
+  /** Extra color props keyed by prop name (colorBloom, colorFront…). */
   shaderExtraColors?: Record<string, string>
   /** Paper per-fill blend — composited via CSS background-blend-mode. */
   blendMode?: string

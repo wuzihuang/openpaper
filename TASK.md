@@ -243,3 +243,12 @@ npx tsc --noEmit && npx vite build
 - **bloom-dots**（hg 源码）：光斑圆点 shader，需 `u_colorBloom` 第二颜色 uniform → ShaderDef.extraColorUniforms 通用机制 + Fill.shaderExtraColors + 检查器颜色字段。shader 共 6 种，S 菜单 14 项
 - **token 11 类型补齐**：DesignToken.type 扩展为 Paper 全集（+breakpoint/container 组织型），Theme 面板 11 分组
 - **Video 导出**（Paper exportMeta 视频）：`downloadShaderVideo` —— 含 shader 填充的节点 Export 区出现「Export video (3s)」，canvas.captureStream(30fps)+MediaRecorder → MP4（支持时）/WebM 下载
+
+## 官方 @paper-design/shaders 集成（一比一还原）
+- **依赖**：`@paper-design/shaders@0.0.82` + `@paper-design/shaders-react@0.0.82`（官方 WebGL shader + React 组件）
+- **`model/shaders.ts` 重写**：1109 行手写 GLSL 移植 → 30 个官方组件注册表；`ShaderDef` 携带 id/name/component/presets/defaults/maxColors/hasBack/extraColors/image/animated/params（数值范围取自官方 doc-comment）；`shaderProps(fill)` 将 Fill 映射为组件 props（colors/命名色/参数 bool→enum 转换/sizing keys/fit enum）；`presetFill(def, preset)` 官方预设 → Fill；`presetMatch` 反向识别当前预设
+- **旧数据迁移**：`LEGACY_KINDS` 映射 bloom-dots→god-rays、grainy-radial→static-radial-gradient、spiral-bands→swirl、sun-rays→color-panels；`u_` 前缀参数自动去前缀（`migrateShaderFill`，挂在 `normalizeDoc` 后）
+- **`canvas/ShaderFill.tsx`**：直接渲染官方组件（`className="shader-fill"` + 官方注入样式）；image 类 shader（image-dithering/paper-texture/fluted-glass/lens-distortion/liquid-metal/water/heatmap）用内置程序化示例图兜底
+- **检查器**：Shader 下拉 30 项、Preset 下拉（124 预设 + Custom 识别）、色板按 maxColors 限长、命名色字段、参数按 bool/enum/number 分列、Speed（仅 animated）
+- **S 菜单 34 项**：30 个官方 shader（各用其默认预设）+ 4 个 CSS 图案预设（改名标注 pattern）；菜单容器加 max-height 滚动
+- 验证：build ✓；Mesh gradient/Gem smoke 真实 Paper GLSL 渲染 ✓；导出选择器兼容 `.shader-fill canvas` ✓

@@ -1,5 +1,5 @@
 import type { DocNode, Fill, GradientStop } from './types'
-import { SHADER_PRESETS as WEBGL_SHADER_PRESETS } from './shaders'
+import { SHADERS, presetFill } from './shaders'
 
 export function defaultStops(): GradientStop[] {
   return [
@@ -111,39 +111,27 @@ export function imageFill(imageSrc: string, imageFit: Fill['imageFit'] = 'fill')
   return { type: 'image', imageSrc, imageFit, isVisible: true }
 }
 
-/** Shader menu presets: real WebGL shader fills (GLSL in model/shaders.ts) plus
- * CSS pattern fills kept as lightweight tiling options. */
+/** Shader menu presets: one entry per official @paper-design shader (its
+ * default preset) plus CSS pattern fills kept as lightweight tiling options. */
 export const SHADER_PRESETS: { name: string; base?: string; fills: Fill[] }[] = [
-  ...WEBGL_SHADER_PRESETS.map((p) => ({
-    name: p.name,
-    fills: [
-      {
-        type: 'shader',
-        shaderKind: p.kind,
-        shaderColors: p.colors,
-        shaderBack: p.back,
-        shaderParams: p.params,
-        isVisible: true,
-      } satisfies Fill,
-    ],
-  })),
+  ...SHADERS.map((d) => ({ name: d.name, fills: [presetFill(d, d.presets[0])] })),
   {
-    name: 'Dot grid',
+    name: 'Dot grid (pattern)',
     base: '#f8fafc',
     fills: [{ type: 'pattern', pattern: 'dot-grid', color: '#94a3b8', patternSize: 14, isVisible: true }],
   },
   {
-    name: 'Halftone',
+    name: 'Halftone (pattern)',
     base: '#111827',
     fills: [{ type: 'pattern', pattern: 'halftone', color: '#e5e7eb', patternSize: 10, isVisible: true }],
   },
   {
-    name: 'Stripes',
+    name: 'Stripes (pattern)',
     base: '#ffffff',
     fills: [{ type: 'pattern', pattern: 'lines', color: '#cbd5e1', patternSize: 12, isVisible: true }],
   },
   {
-    name: 'Noise',
+    name: 'Noise (pattern)',
     base: '#1e293b',
     fills: [{ type: 'pattern', pattern: 'noise', color: '#64748b', isVisible: true }],
   },

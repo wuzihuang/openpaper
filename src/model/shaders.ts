@@ -1,1109 +1,737 @@
-// Paper WebGL shader fills — GLSL ported verbatim from the cached Paper fills
-// bundle (paper.design renderer, fills-*.js). Shaders render in WebGL2 via a
-// shared fullscreen-quad vertex shader; v_objectUV is centered (-0.5..0.5).
+// Paper WebGL shader fills — rendered by the official @paper-design/shaders-react
+// components (paper.design's published GLSL, installed as npm packages). This
+// registry maps Fill.shaderKind to a component plus inspector metadata.
+import type { ComponentType } from 'react'
+import {
+  ColorPanels,
+  Dithering,
+  DotGrid,
+  DotOrbit,
+  FlutedGlass,
+  GemSmoke,
+  GodRays,
+  GrainGradient,
+  HalftoneCmyk,
+  HalftoneDots,
+  Heatmap,
+  ImageDithering,
+  LensDistortion,
+  LiquidMetal,
+  MeshGradient,
+  Metaballs,
+  NeuroNoise,
+  PaperTexture,
+  PerlinNoise,
+  PulsingBorder,
+  SimplexNoise,
+  SmokeRing,
+  Spiral,
+  StaticMeshGradient,
+  StaticRadialGradient,
+  Swirl,
+  Voronoi,
+  Warp,
+  Water,
+  Waves,
+  colorPanelsPresets,
+  ditheringPresets,
+  dotGridPresets,
+  dotOrbitPresets,
+  flutedGlassPresets,
+  gemSmokePresets,
+  godRaysPresets,
+  grainGradientPresets,
+  halftoneCmykPresets,
+  halftoneDotsPresets,
+  heatmapPresets,
+  imageDitheringPresets,
+  lensDistortionPresets,
+  liquidMetalPresets,
+  meshGradientPresets,
+  metaballsPresets,
+  neuroNoisePresets,
+  paperTexturePresets,
+  perlinNoisePresets,
+  pulsingBorderPresets,
+  simplexNoisePresets,
+  smokeRingPresets,
+  spiralPresets,
+  staticMeshGradientPresets,
+  staticRadialGradientPresets,
+  swirlPresets,
+  voronoiPresets,
+  warpPresets,
+  waterPresets,
+  wavesPresets,
+} from '@paper-design/shaders-react'
+import {
+  DitheringShapes,
+  DitheringTypes,
+  DotGridShapes,
+  GemSmokeShapes,
+  GlassDistortionShapes,
+  GlassGridShapes,
+  GrainGradientShapes,
+  HalftoneCmykTypes,
+  HalftoneDotsGrids,
+  HalftoneDotsTypes,
+  LiquidMetalShapes,
+  PulsingBorderAspectRatios,
+  ShaderFitOptions,
+  WarpPatterns,
+} from '@paper-design/shaders'
+import type { Fill } from './types'
+
+type EnumMap = Record<string, number>
+type ShaderComponent = ComponentType<any>
+export interface ShaderPresetParams {
+  [key: string]: unknown
+}
+export interface ShaderPreset {
+  name: string
+  params: ShaderPresetParams
+}
 
 export interface ShaderParam {
+  /** Component prop name — also the key stored in Fill.shaderParams. */
   key: string
   label: string
   min: number
   max: number
   step: number
-  default: number
-  /** Uniform is a GLSL bool — set via uniform1i. */
+  /** Component takes a boolean; the model stores 0/1. */
   bool?: boolean
+  /** Component takes an enum key string; the model stores its numeric value. */
+  enum?: EnumMap
 }
 
 export interface ShaderDef {
   id: string
   name: string
-  frag: string
-  params: ShaderParam[]
-  /** Uses u_colorBack background color uniform. */
+  component: ShaderComponent
+  presets: ShaderPreset[]
+  /** Params of the first (Default) preset — used as field fallbacks. */
+  defaults: ShaderPresetParams
+  /** Max entries in Fill.shaderColors the shader samples (0 = no palette). */
+  maxColors: number
+  /** Shader has a colorBack uniform. */
   hasBack?: boolean
-  /** Uses u_noiseTexture — bound to a procedurally generated noise texture. */
-  hasNoise?: boolean
-  /** Extra vec4 color uniforms beyond u_colorBack (e.g. u_colorBloom). */
-  extraColorUniforms?: { key: string; label: string }[]
+  /** Extra named color props (colorFront/colorBloom/…) beyond colors+colorBack. */
+  extraColors?: { key: string; label: string }[]
+  /** Shader samples an image: 'required' renders nothing useful without one. */
+  image?: 'optional' | 'required'
+  /** Shader has u_time — exposes the speed param. */
+  animated?: boolean
+  params: ShaderParam[]
 }
 
-const VERT = `#version 300 es
-in vec2 a_pos;
-out vec2 v_objectUV;
-void main() {
-  v_objectUV = vec2(a_pos.x, -a_pos.y) * 0.5;
-  gl_Position = vec4(a_pos, 0.0, 1.0);
-}`
+const P = (key: string, label: string, min: number, max: number, step: number, extra?: Partial<ShaderParam>): ShaderParam => ({
+  key,
+  label,
+  min,
+  max,
+  step,
+  ...extra,
+})
 
-const MESH_GRADIENT_FRAG = `#version 300 es
-precision mediump float;
-
-uniform float u_time;
-
-uniform vec4 u_colors[10];
-uniform float u_colorsCount;
-
-uniform float u_distortion;
-uniform float u_swirl;
-uniform float u_grainMixer;
-uniform float u_grainOverlay;
-
-in vec2 v_objectUV;
-out vec4 fragColor;
-
-
-#define TWO_PI 6.28318530718
-#define PI 3.14159265358979323846
-
-
-vec2 rotate(vec2 uv, float th) {
-  return mat2(cos(th), sin(th), -sin(th), cos(th)) * uv;
+function def(
+  id: string,
+  name: string,
+  component: ShaderComponent,
+  presets: readonly { name: string; params: ShaderPresetParams }[],
+  opts: Partial<Omit<ShaderDef, 'id' | 'name' | 'component' | 'presets' | 'defaults'>> = {},
+): ShaderDef {
+  return { id, name, component, presets: presets as ShaderPreset[], defaults: presets[0]?.params ?? {}, maxColors: 0, params: [], ...opts }
 }
 
-
-  float hash21(vec2 p) {
-    p = fract(p * vec2(0.3183099, 0.3678794)) + 0.1;
-    p += dot(p, p + 19.19);
-    return fract(p.x * p.y);
-  }
-
-
-float valueNoise(vec2 st) {
-  vec2 i = floor(st);
-  vec2 f = fract(st);
-  float a = hash21(i);
-  float b = hash21(i + vec2(1.0, 0.0));
-  float c = hash21(i + vec2(0.0, 1.0));
-  float d = hash21(i + vec2(1.0, 1.0));
-  vec2 u = f * f * (3.0 - 2.0 * f);
-  float x1 = mix(a, b, u.x);
-  float x2 = mix(c, d, u.x);
-  return mix(x1, x2, u.y);
-}
-
-float noise(vec2 n, vec2 seedOffset) {
-  return valueNoise(n + seedOffset);
-}
-
-vec2 getPosition(int i, float t) {
-  float a = float(i) * .37;
-  float b = .6 + fract(float(i) / 3.) * .9;
-  float c = .8 + fract(float(i + 1) / 4.);
-
-  float x = sin(t * b + a);
-  float y = cos(t * c + a * 1.5);
-
-  return .5 + .5 * vec2(x, y);
-}
-
-void main() {
-  vec2 uv = v_objectUV;
-  uv += .5;
-  vec2 grainUV = uv * 1000.;
-
-  float mixerGrain = 0.;
-  if (u_grainMixer > 0.) {
-    mixerGrain = .4 * u_grainMixer * (noise(grainUV, vec2(0.)) - .5);
-  }
-
-  const float firstFrameOffset = 41.5;
-  float t = .5 * (u_time + firstFrameOffset);
-
-  float radius = smoothstep(0., 1., length(uv - .5));
-  float center = 1. - radius;
-  for (float i = 1.; i <= 2.; i++) {
-    uv.x += u_distortion * center / i * sin(t + i * .4 * smoothstep(.0, 1., uv.y)) * cos(.2 * t + i * 2.4 * smoothstep(.0, 1., uv.y));
-    uv.y += u_distortion * center / i * cos(t + i * 2. * smoothstep(.0, 1., uv.x));
-  }
-
-  vec2 uvRotated = uv;
-  uvRotated -= vec2(.5);
-  float angle = 3. * u_swirl * radius;
-  uvRotated = rotate(uvRotated, -angle);
-  uvRotated += vec2(.5);
-
-  vec3 color = vec3(0.);
-  float opacity = 0.;
-  float totalWeight = 0.;
-
-  for (int i = 0; i < 10; i++) {
-    if (i >= int(u_colorsCount)) break;
-
-    vec2 pos = getPosition(i, t) + mixerGrain;
-    vec3 colorFraction = u_colors[i].rgb * u_colors[i].a;
-    float opacityFraction = u_colors[i].a;
-
-    float dist = length(uvRotated - pos);
-
-    dist = pow(dist, 3.5);
-    float weight = 1. / (dist + 1e-3);
-    color += colorFraction * weight;
-    opacity += opacityFraction * weight;
-    totalWeight += weight;
-  }
-
-  color /= max(1e-4, totalWeight);
-  opacity /= max(1e-4, totalWeight);
-
-  if (u_grainOverlay > 0.) {
-    float grainOverlay = valueNoise(rotate(grainUV, 1.) + vec2(3.));
-    grainOverlay = mix(grainOverlay, valueNoise(rotate(grainUV, 2.) + vec2(-1.)), .5);
-    grainOverlay = pow(grainOverlay, 1.3);
-
-    float grainOverlayV = grainOverlay * 2. - 1.;
-    vec3 grainOverlayColor = vec3(step(0., grainOverlayV));
-    float grainOverlayStrength = u_grainOverlay * abs(grainOverlayV);
-    grainOverlayStrength = pow(grainOverlayStrength, .8);
-    color = mix(color, grainOverlayColor, .35 * grainOverlayStrength);
-
-    opacity += .5 * grainOverlayStrength;
-  }
-  opacity = clamp(opacity, 0., 1.);
-
-  fragColor = vec4(color, opacity);
-}`
-
-const DOT_ORBIT_FRAG = `#version 300 es
-precision mediump float;
-
-uniform float u_time;
-
-uniform sampler2D u_noiseTexture;
-
-uniform vec4 u_colorBack;
-uniform vec4 u_colors[10];
-uniform float u_colorsCount;
-uniform float u_size;
-uniform float u_count;
-
-in vec2 v_objectUV;
-
-out vec4 fragColor;
-
-
-#define TWO_PI 6.28318530718
-#define PI 3.14159265358979323846
-
-
-  float randomR(vec2 p) {
-    vec2 uv = floor(p) / 100. + .5;
-    return texture(u_noiseTexture, fract(uv)).r;
-  }
-
-float noise(float x) {
-  float i = floor(x);
-  float f = fract(x);
-  float u = f * f * (3.0 - 2.0 * f);
-  vec2 p0 = vec2(i, 0.0);
-  vec2 p1 = vec2(i + 1.0, 0.0);
-  return mix(randomR(p0), randomR(p1), u);
-}
-
-float getBallShape(vec2 uv, vec2 c, float p) {
-  float s = .5 * length(uv - c);
-  s = 1. - clamp(s, 0., 1.);
-  s = pow(s, p);
-  return s;
-}
-
-void main() {
-  vec2 shape_uv = v_objectUV;
-
-  shape_uv += .5;
-
-  const float firstFrameOffset = 2503.4;
-  float t = .2 * (u_time + firstFrameOffset);
-
-  vec3 totalColor = vec3(0.);
-  float totalShape = 0.;
-  float totalOpacity = 0.;
-
-  for (int i = 0; i < 20; i++) {
-    if (i >= int(ceil(u_count))) break;
-
-    float idxFract = float(i) / float(20);
-    float angle = TWO_PI * idxFract;
-
-    float speed = 1. - .2 * idxFract;
-    float noiseX = noise(angle * 10. + float(i) + t * speed);
-    float noiseY = noise(angle * 20. + float(i) - t * speed);
-
-    vec2 pos = vec2(.5) + 1e-4 + .9 * (vec2(noiseX, noiseY) - .5);
-
-    int safeIndex = i % int(u_colorsCount + 0.5);
-    vec4 ballColor = u_colors[safeIndex];
-    ballColor.rgb *= ballColor.a;
-
-    float sizeFrac = 1.;
-    if (float(i) > floor(u_count - 1.)) {
-      sizeFrac *= fract(u_count);
-    }
-
-    float shape = getBallShape(shape_uv, pos, 45. - 30. * u_size * sizeFrac);
-    shape *= pow(u_size, .2);
-    shape = smoothstep(0., 1., shape);
-
-    totalColor += ballColor.rgb * shape;
-    totalShape += shape;
-    totalOpacity += ballColor.a * shape;
-  }
-
-  totalColor /= max(totalShape, 1e-4);
-  totalOpacity /= max(totalShape, 1e-4);
-
-  float edge_width = fwidth(totalShape);
-  float finalShape = smoothstep(.4, .4 + edge_width, totalShape);
-
-  vec3 color = totalColor * finalShape;
-  float opacity = totalOpacity * finalShape;
-
-  vec3 bgColor = u_colorBack.rgb * u_colorBack.a;
-  color = color + bgColor * (1. - opacity);
-  opacity = opacity + u_colorBack.a * (1. - opacity);
-
-
-  color += 1. / 256. * (fract(sin(dot(.014 * gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453123) - .5);
-
-
-  fragColor = vec4(color, opacity);
-}`
-
-
-const GRAINY_RADIAL_FRAG = `#version 300 es
-precision mediump float;
-
-uniform vec4 u_colorBack;
-uniform vec4 u_colors[10];
-uniform float u_colorsCount;
-
-uniform float u_radius;
-uniform float u_focalDistance;
-uniform float u_focalAngle;
-uniform float u_falloff;
-uniform float u_mixing;
-uniform float u_distortion;
-uniform float u_distortionShift;
-uniform float u_distortionFreq;
-uniform float u_grainMixer;
-uniform float u_grainOverlay;
-
-in vec2 v_objectUV;
-out vec4 fragColor;
-
-
-#define TWO_PI 6.28318530718
-#define PI 3.14159265358979323846
-
-
-vec2 rotate(vec2 uv, float th) {
-  return mat2(cos(th), sin(th), -sin(th), cos(th)) * uv;
-}
-
-
-  float hash21(vec2 p) {
-    p = fract(p * vec2(0.3183099, 0.3678794)) + 0.1;
-    p += dot(p, p + 19.19);
-    return fract(p.x * p.y);
-  }
-
-
-float valueNoise(vec2 st) {
-  vec2 i = floor(st);
-  vec2 f = fract(st);
-  float a = hash21(i);
-  float b = hash21(i + vec2(1.0, 0.0));
-  float c = hash21(i + vec2(0.0, 1.0));
-  float d = hash21(i + vec2(1.0, 1.0));
-  vec2 u = f * f * (3.0 - 2.0 * f);
-  float x1 = mix(a, b, u.x);
-  float x2 = mix(c, d, u.x);
-  return mix(x1, x2, u.y);
-}
-
-float noise(vec2 n, vec2 seedOffset) {
-  return valueNoise(n + seedOffset);
-}
-
-vec2 getPosition(int i, float t) {
-  float a = float(i) * .37;
-  float b = .6 + mod(float(i), 3.) * .3;
-  float c = .8 + mod(float(i + 1), 4.) * 0.25;
-
-  float x = sin(t * b + a);
-  float y = cos(t * c + a * 1.5);
-
-  return .5 + .5 * vec2(x, y);
-}
-
-void main() {
-  vec2 uv = 2. * v_objectUV;
-  vec2 grainUV = uv * 1000.;
-
-  vec2 center = vec2(0.);
-  float angleRad = -radians(u_focalAngle + 90.);
-  vec2 focalPoint = vec2(cos(angleRad), sin(angleRad)) * u_focalDistance;
-  float radius = u_radius;
-
-  vec2 c_to_uv = uv - center;
-  vec2 f_to_uv = uv - focalPoint;
-  vec2 f_to_c = center - focalPoint;
-  float r = length(c_to_uv);
-
-  float fragAngle = atan(c_to_uv.y, c_to_uv.x);
-  float angleDiff = fract((fragAngle - angleRad + PI) / TWO_PI) * TWO_PI - PI;
-
-  float halfAngle = acos(clamp(radius / max(u_focalDistance, 1e-4), 0.0, 1.0));
-  float e0 = 0.6 * PI, e1 = halfAngle;
-  float lo = min(e0, e1), hi = max(e0, e1);
-  float s  = smoothstep(lo, hi, abs(angleDiff));
-  float isInSector = (e1 >= e0) ? (1.0 - s) : s;
-
-  float a = dot(f_to_uv, f_to_uv);
-  float b = -2.0 * dot(f_to_uv, f_to_c);
-  float c = dot(f_to_c, f_to_c) - radius * radius;
-
-  float discriminant = b * b - 4.0 * a * c;
-  float t = 1.0;
-
-  if (discriminant >= 0.0) {
-    float sqrtD = sqrt(discriminant);
-    float div = max(1e-4, 2.0 * a);
-    float t0 = (-b - sqrtD) / div;
-    float t1 = (-b + sqrtD) / div;
-    t = max(t0, t1);
-    if (t < 0.0) t = 0.0;
-  }
-
-  float dist = length(f_to_uv);
-  float normalized = dist / max(1e-4, length(f_to_uv * t));
-  float shape = clamp(normalized, 0.0, 1.0);
-
-  float falloffMapped = mix(.2 + .8 * max(0., u_falloff + 1.), mix(1., 15., u_falloff * u_falloff), step(.0, u_falloff));
-
-  float falloffExp = mix(falloffMapped, 1., shape);
-  shape = pow(shape, falloffExp);
-  shape = 1. - clamp(shape, 0., 1.);
-
-
-  float outerMask = .002;
-  float outer = 1.0 - smoothstep(radius - outerMask, radius + outerMask, r);
-  outer = mix(outer, 1., isInSector);
-
-  shape = mix(0., shape, outer);
-  shape *= 1. - smoothstep(radius - .01, radius, r);
-
-  float angle = atan(f_to_uv.y, f_to_uv.x);
-  shape -= pow(u_distortion, 2.) * shape * pow(abs(sin(PI * clamp(length(f_to_uv) - 0.2 + u_distortionShift, 0.0, 1.0))), 4.0) * (sin(u_distortionFreq * angle) + cos(floor(0.65 * u_distortionFreq) * angle));
-
-  float mixerGrain = 0.;
-  if (u_grainMixer > 0.) {
-    mixerGrain = .4 * u_grainMixer * (noise(grainUV, vec2(0.)) - .5);
-  }
-
-  float mixer = shape * u_colorsCount + mixerGrain;
-  vec4 gradient = u_colors[0];
-  gradient.rgb *= gradient.a;
-
-  float outerShape = 0.;
-  for (int i = 1; i < 10; i++) {
-    if (i > int(u_colorsCount)) break;
-    float mLinear = clamp(mixer - float(i - 1), 0.0, 1.0);
-
-    float aa = fwidth(mLinear);
-    float width = min(u_mixing, 0.5);
-    float t = clamp((mLinear - (0.5 - width - aa)) / (2. * width + 2. * aa), 0., 1.);
-    float p = mix(2., 1., clamp((u_mixing - 0.5) * 2., 0., 1.));
-    float m = t < 0.5
-      ? 0.5 * pow(2. * t, p)
-      : 1. - 0.5 * pow(2. * (1. - t), p);
-
-    float quadBlend = clamp((u_mixing - 0.5) * 2., 0., 1.);
-    m = mix(m, m * m, 0.5 * quadBlend);
-    
-    if (i == 1) {
-      outerShape = m;
-    }
-
-    vec4 c = u_colors[i - 1];
-    c.rgb *= c.a;
-    gradient = mix(gradient, c, m);
-  }
-
-  vec3 color = gradient.rgb * outerShape;
-  float opacity = gradient.a * outerShape;
-
-  vec3 bgColor = u_colorBack.rgb * u_colorBack.a;
-  color = color + bgColor * (1.0 - opacity);
-  opacity = opacity + u_colorBack.a * (1.0 - opacity);
-
-  if (u_grainOverlay > 0.) {
-    float grainOverlay = valueNoise(rotate(grainUV, 1.) + vec2(3.));
-    grainOverlay = mix(grainOverlay, valueNoise(rotate(grainUV, 2.) + vec2(-1.)), .5);
-    grainOverlay = pow(grainOverlay, 1.3);
-
-    float grainOverlayV = grainOverlay * 2. - 1.;
-    vec3 grainOverlayColor = vec3(step(0., grainOverlayV));
-    float grainOverlayStrength = u_grainOverlay * abs(grainOverlayV);
-    grainOverlayStrength = pow(grainOverlayStrength, .8);
-    color = mix(color, grainOverlayColor, .35 * grainOverlayStrength);
-
-    opacity += .5 * grainOverlayStrength;
-  }
-  opacity = clamp(opacity, 0., 1.);
-
-  fragColor = vec4(color, opacity);
-}`
-
-  // appended below
-
-const SPIRAL_BANDS_FRAG = `#version 300 es
-precision mediump float;
-
-uniform float u_time;
-
-uniform vec4 u_colorBack;
-uniform vec4 u_colors[10];
-uniform float u_colorsCount;
-uniform float u_bandCount;
-uniform float u_twist;
-uniform float u_center;
-uniform float u_proportion;
-uniform float u_softness;
-uniform float u_noise;
-uniform float u_noiseFrequency;
-
-in vec2 v_objectUV;
-
-out vec4 fragColor;
-
-
-#define TWO_PI 6.28318530718
-#define PI 3.14159265358979323846
-
-
-vec3 permute(vec3 x) { return mod(((x * 34.0) + 1.0) * x, 289.0); }
-float snoise(vec2 v) {
-  const vec4 C = vec4(0.211324865405187, 0.366025403784439,
-    -0.577350269189626, 0.024390243902439);
-  vec2 i = floor(v + dot(v, C.yy));
-  vec2 x0 = v - i + dot(i, C.xx);
-  vec2 i1;
-  i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
-  vec4 x12 = x0.xyxy + C.xxzz;
-  x12.xy -= i1;
-  i = mod(i, 289.0);
-  vec3 p = permute(permute(i.y + vec3(0.0, i1.y, 1.0))
-    + i.x + vec3(0.0, i1.x, 1.0));
-  vec3 m = max(0.5 - vec3(dot(x0, x0), dot(x12.xy, x12.xy),
-      dot(x12.zw, x12.zw)), 0.0);
-  m = m * m;
-  m = m * m;
-  vec3 x = 2.0 * fract(p * C.www) - 1.0;
-  vec3 h = abs(x) - 0.5;
-  vec3 ox = floor(x + 0.5);
-  vec3 a0 = x - ox;
-  m *= 1.79284291400159 - 0.85373472095314 * (a0 * a0 + h * h);
-  vec3 g;
-  g.x = a0.x * x0.x + h.x * x0.y;
-  g.yz = a0.yz * x12.xz + h.yz * x12.yw;
-  return 130.0 * dot(m, g);
-}
-
-
-vec2 rotate(vec2 uv, float th) {
-  return mat2(cos(th), sin(th), -sin(th), cos(th)) * uv;
-}
-
-
-void main() {
-  vec2 shape_uv = v_objectUV;
-
-  float l = length(shape_uv);
-  l = max(1e-4, l);
-
-  float t = u_time;
-
-  float angle = ceil(u_bandCount) * atan(shape_uv.y, shape_uv.x) + t;
-  float angle_norm = angle / TWO_PI;
-
-  float twist = 3. * clamp(u_twist, 0., 1.);
-  float offset = pow(l, -twist) + angle_norm;
-
-  float shape = fract(offset);
-  shape = 1. - abs(2. * shape - 1.);
-  if (u_noise > 0.) {
-    shape += u_noise * snoise(15. * pow(u_noiseFrequency, 2.) * shape_uv);
-  }
-
-  float mid = smoothstep(.2, .2 + .8 * u_center, pow(l, twist));
-  shape = mix(0., shape, mid);
-
-  float proportion = clamp(u_proportion, 0., 1.);
-  float exponent = mix(.25, 1., proportion * 2.);
-  exponent = mix(exponent, 10., max(0., proportion * 2. - 1.));
-  shape = pow(shape, exponent);
-
-  float mixer = shape * u_colorsCount;
-  vec4 gradient = u_colors[0];
-  gradient.rgb *= gradient.a;
-
-  float outerShape = 0.;
-  for (int i = 1; i < 10; i++) {
-    if (i > int(u_colorsCount)) break;
-
-    float m = clamp(mixer - float(i - 1), 0., 1.);
-    float aa = fwidth(m);
-    m = smoothstep(.5 - .5 * u_softness - aa, .5 + .5 * u_softness + aa, m);
-
-    if (i == 1) {
-      outerShape = m;
-    }
-
-    vec4 c = u_colors[i - 1];
-    c.rgb *= c.a;
-    gradient = mix(gradient, c, m);
-  }
-
-  float midAA = .1 * fwidth(pow(l, -twist));
-  float outerMid = smoothstep(.2, .2 + midAA, pow(l, twist));
-  outerShape = mix(0., outerShape, outerMid);
-
-  vec3 color = gradient.rgb * outerShape;
-  float opacity = gradient.a * outerShape;
-
-  vec3 bgColor = u_colorBack.rgb * u_colorBack.a;
-  color = color + bgColor * (1.0 - opacity);
-  opacity = opacity + u_colorBack.a * (1.0 - opacity);
-
-  
-  color += 1. / 256. * (fract(sin(dot(.014 * gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453123) - .5);
-
-
-  fragColor = vec4(color, opacity);
-}`
-
-  // appended below
-
-const SUN_RAYS_FRAG = `#version 300 es
-precision lowp float;
-
-uniform float u_time;
-uniform mediump float u_scale;
-
-uniform vec4 u_colors[10];
-uniform float u_colorsCount;
-uniform vec4 u_colorBack;
-uniform float u_density;
-uniform float u_angle1;
-uniform float u_angle2;
-uniform float u_length;
-uniform bool u_edges;
-uniform float u_blur;
-uniform float u_fadeIn;
-uniform float u_fadeOut;
-uniform float u_gradient;
-
-in vec2 v_objectUV;
-
-out vec4 fragColor;
-
-
-#define TWO_PI 6.28318530718
-#define PI 3.14159265358979323846
-
-
-const float zLimit = .5;
-
-vec2 getPanel(float angle, vec2 uv, float invLength, float aa) {
-  float sinA = sin(angle);
-  float cosA = cos(angle);
-
-  float denom = sinA - uv.y * cosA;
-  if (abs(denom) < .01) return vec2(0.);
-
-  float z = uv.y / denom;
-
-  if (z <= 0. || z > zLimit) return vec2(0.);
-
-  float zRatio = z / zLimit;
-  float panelMap = 1. - zRatio;
-  float x = uv.x * (cosA * z + 1.) * invLength;
-
-  float zOffset = zRatio - .5;
-  float left = -.5 + zOffset * u_angle1;
-  float right = .5 - zOffset * u_angle2;
-  float blurX = aa + 2. * panelMap * u_blur;
-
-  float leftEdge1 = left - blurX;
-  float leftEdge2 = left + .25 * blurX;
-  float rightEdge1 = right - .25 * blurX;
-  float rightEdge2 = right + blurX;
-
-  float panel = smoothstep(leftEdge1, leftEdge2, x) * (1.0 - smoothstep(rightEdge1, rightEdge2, x));
-  panel *= mix(0., panel, smoothstep(0., .01 / u_scale, panelMap));
-
-  float midScreen = abs(sinA);
-  if (u_edges == true) {
-    panelMap = mix(.99, panelMap, panel * clamp(panelMap / (.15 * (1. - pow(midScreen, .1))), 0.0, 1.0));
-  } else if (midScreen < .07) {
-    panel *= (midScreen * 15.);
-  }
-
-  return vec2(panel, panelMap);
-}
-
-vec4 blendColor(vec4 colorA, float panelMask, float panelMap) {
-  float fade = 1. - smoothstep(.97 - .97 * u_fadeIn, 1., panelMap);
-
-  fade *= smoothstep(-.2 * (1. - u_fadeOut), u_fadeOut, panelMap);
-
-  vec3 blendedRGB = mix(vec3(0.), colorA.rgb, fade);
-  float blendedAlpha = mix(0., colorA.a, fade);
-
-  return vec4(blendedRGB, blendedAlpha) * panelMask;
-}
-
-void main() {
-  vec2 uv = v_objectUV;
-  uv *= 1.25;
-
-  float t = .02 * u_time;
-  t = fract(t);
-  bool reverseTime = (t < 0.5);
-
-  vec3 color = vec3(0.);
-  float opacity = 0.;
-
-  float aa = .005 / u_scale;
-  int colorsCount = int(u_colorsCount);
-
-  vec4 premultipliedColors[10];
-  for (int i = 0; i < 10; i++) {
-    if (i >= colorsCount) break;
-    vec4 c = u_colors[i];
-    c.rgb *= c.a;
-    premultipliedColors[i] = c;
-  }
-
-  float invLength = 1.5 / max(u_length, .001);
-
-  float totalColorWeight = 0.;
-  int panelsNumber = 12;
-
-  float densityNormalizer = 1.;
-  if (colorsCount == 4) {
-    panelsNumber = 16;
-    densityNormalizer = 1.34;
-  } else if (colorsCount == 5) {
-    panelsNumber = 20;
-    densityNormalizer = 1.67;
-  } else if (colorsCount == 7) {
-    panelsNumber = 14;
-    densityNormalizer = 1.17;
-  }
-
-  float fPanelsNumber = float(panelsNumber);
-
-  float totalPanelsShape = 0.;
-  float panelGrad = 1. - clamp(u_gradient, 0., 1.);
-
-  for (int set = 0; set < 2; set++) {
-    bool isForward = (set == 0 && !reverseTime) || (set == 1 && reverseTime);
-    if (!isForward) continue;
-
-    for (int i = 0; i <= 20; i++) {
-      if (i >= panelsNumber) break;
-
-      int idx = panelsNumber - 1 - i;
-
-      float offset = float(idx) / fPanelsNumber;
-      if (set == 1) {
-        offset += .5;
-      }
-
-      float densityFract = densityNormalizer * fract(t + offset);
-      float angleNorm = densityFract / u_density;
-      if (densityFract >= .5 || angleNorm >= .3) continue;
-
-      float smoothDensity = clamp((.5 - densityFract) / .1, 0., 1.) * clamp(densityFract / .01, 0., 1.);
-      float smoothAngle = clamp((.3 - angleNorm) / .05, 0., 1.);
-      if (smoothDensity * smoothAngle < .001) continue;
-
-      if (angleNorm > .5) {
-        angleNorm = 0.5;
-      }
-      vec2 panel = getPanel(angleNorm * TWO_PI + PI, uv, invLength, aa);
-      if (panel[0] <= .001) continue;
-      float panelMask = panel[0] * smoothDensity * smoothAngle;
-      float panelMap = panel[1];
-
-      int colorIdx = idx % colorsCount;
-      int nextColorIdx = (idx + 1) % colorsCount;
-
-      vec4 colorA = premultipliedColors[colorIdx];
-      vec4 colorB = premultipliedColors[nextColorIdx];
-
-      colorA = mix(colorA, colorB, max(0., smoothstep(.0, .45, panelMap) - panelGrad));
-      vec4 blended = blendColor(colorA, panelMask, panelMap);
-      color = blended.rgb + color * (1. - blended.a);
-      opacity = blended.a + opacity * (1. - blended.a);
-    }
-
-
-    for (int i = 0; i <= 20; i++) {
-      if (i >= panelsNumber) break;
-
-      int idx = panelsNumber - 1 - i;
-
-      float offset = float(idx) / fPanelsNumber;
-      if (set == 0) {
-        offset += .5;
-      }
-
-      float densityFract = densityNormalizer * fract(-t + offset);
-      float angleNorm = -densityFract / u_density;
-      if (densityFract >= .5 || angleNorm < -.3) continue;
-
-      float smoothDensity = clamp((.5 - densityFract) / .1, 0., 1.) * clamp(densityFract / .01, 0., 1.);
-      float smoothAngle = clamp((angleNorm + .3) / .05, 0., 1.);
-      if (smoothDensity * smoothAngle < .001) continue;
-
-      vec2 panel = getPanel(angleNorm * TWO_PI + PI, uv, invLength, aa);
-      float panelMask = panel[0] * smoothDensity * smoothAngle;
-      if (panelMask <= .001) continue;
-      float panelMap = panel[1];
-
-      int colorIdx = (colorsCount - (idx % colorsCount)) % colorsCount;
-      if (colorIdx < 0) colorIdx += colorsCount;
-      int nextColorIdx = (colorIdx + 1) % colorsCount;
-
-      vec4 colorA = premultipliedColors[colorIdx];
-      vec4 colorB = premultipliedColors[nextColorIdx];
-
-      colorA = mix(colorA, colorB, max(0., smoothstep(.0, .45, panelMap) - panelGrad));
-      vec4 blended = blendColor(colorA, panelMask, panelMap);
-      color = blended.rgb + color * (1. - blended.a);
-      opacity = blended.a + opacity * (1. - blended.a);
-    }
-  }
-
-  vec3 bgColor = u_colorBack.rgb * u_colorBack.a;
-  color = color + bgColor * (1.0 - opacity);
-  opacity = opacity + u_colorBack.a * (1.0 - opacity);
-
-  
-  color += 1. / 256. * (fract(sin(dot(.014 * gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453123) - .5);
-
-
-  fragColor = vec4(color, opacity);
-}`
-
-  // appended below
-
-const BLOOM_DOTS_FRAG = `#version 300 es
-precision mediump float;
-
-uniform float u_time;
-
-uniform sampler2D u_noiseTexture;
-
-uniform vec4 u_colorBack;
-uniform vec4 u_colorBloom;
-uniform vec4 u_colors[10];
-uniform float u_colorsCount;
-
-uniform float u_density;
-uniform float u_spotty;
-uniform float u_midSize;
-uniform float u_midIntensity;
-uniform float u_intensity;
-uniform float u_bloom;
-
-in vec2 v_objectUV;
-
-out vec4 fragColor;
-
-
-#define TWO_PI 6.28318530718
-#define PI 3.14159265358979323846
-
-
-vec2 rotate(vec2 uv, float th) {
-  return mat2(cos(th), sin(th), -sin(th), cos(th)) * uv;
-}
-
-
-  float randomR(vec2 p) {
-    vec2 uv = floor(p) / 100. + .5;
-    return texture(u_noiseTexture, fract(uv)).r;
-  }
-
-float valueNoise(vec2 st) {
-  vec2 i = floor(st);
-  vec2 f = fract(st);
-  float a = randomR(i);
-  float b = randomR(i + vec2(1.0, 0.0));
-  float c = randomR(i + vec2(0.0, 1.0));
-  float d = randomR(i + vec2(1.0, 1.0));
-  vec2 u = f * f * (3.0 - 2.0 * f);
-  float x1 = mix(a, b, u.x);
-  float x2 = mix(c, d, u.x);
-  return mix(x1, x2, u.y);
-}
-
-
-  float hash11(float p) {
-    p = fract(p * 0.3183099) + 0.1;
-    p *= p + 19.19;
-    return fract(p * p);
-  }
-
-
-float raysShape(vec2 uv, float r, float freq, float intensity, float radius) {
-  float a = atan(uv.y, uv.x);
-  vec2 left = vec2(a * freq, r);
-  vec2 right = vec2(fract(a / TWO_PI) * TWO_PI * freq, r);
-  float n_left = pow(valueNoise(left), intensity);
-  float n_right = pow(valueNoise(right), intensity);
-  float shape = mix(n_right, n_left, smoothstep(-.15, .15, uv.x));
-  return shape;
-}
-
-void main() {
-  vec2 shape_uv = v_objectUV;
-
-  float t = .2 * u_time;
-
-  float radius = length(shape_uv);
-  float spots = 6.5 * abs(u_spotty);
-
-  float intensity = 4. - 3. * clamp(u_intensity, 0., 1.);
-
-  float delta = 1. - smoothstep(0., 1., radius);
-
-  float midSize = 10. * abs(u_midSize);
-  float ms_lo = 0.02 * midSize;
-  float ms_hi = max(midSize, 1e-6);
-  float middleShape = pow(u_midIntensity, 0.3) * (1. - smoothstep(ms_lo, ms_hi, 3.0 * radius));
-  middleShape = pow(middleShape, 5.0);
-
-  vec3 accumColor = vec3(0.0);
-  float accumAlpha = 0.0;
-
-  for (int i = 0; i < 10; i++) {
-    if (i >= int(u_colorsCount)) break;
-
-    vec2 rotatedUV = rotate(shape_uv, float(i) + 1.0);
-
-    float r1 = radius * (1.0 + 0.4 * float(i)) - 3.0 * t;
-    float r2 = 0.5 * radius * (1.0 + spots) - 2.0 * t;
-    float density = 6. * u_density + step(.5, u_density) * pow(4.5 * (u_density - .5), 4.);
-    float f = mix(1.0, 3.0 + 0.5 * float(i), hash11(float(i) * 15.)) * density;
-
-    float ray = raysShape(rotatedUV, r1, 5.0 * f, intensity, radius);
-    ray *= raysShape(rotatedUV, r2, 4.0 * f, intensity, radius);
-    ray += (1. + 4. * ray) * middleShape;
-    ray = clamp(ray, 0.0, 1.0);
-
-    float srcAlpha = u_colors[i].a * ray;
-    vec3 srcColor = u_colors[i].rgb * srcAlpha;
-
-    vec3 alphaBlendColor = accumColor + (1.0 - accumAlpha) * srcColor;
-    float alphaBlendAlpha = accumAlpha + (1.0 - accumAlpha) * srcAlpha;
-
-    vec3 addBlendColor = accumColor + srcColor;
-    float addBlendAlpha = accumAlpha + srcAlpha;
-
-    accumColor = mix(alphaBlendColor, addBlendColor, u_bloom);
-    accumAlpha = mix(alphaBlendAlpha, addBlendAlpha, u_bloom);
-  }
-
-  float overlayAlpha = u_colorBloom.a;
-  vec3 overlayColor = u_colorBloom.rgb * overlayAlpha;
-
-  vec3 colorWithOverlay = accumColor + accumAlpha * overlayColor;
-  accumColor = mix(accumColor, colorWithOverlay, u_bloom);
-
-  vec3 bgColor = u_colorBack.rgb * u_colorBack.a;
-
-  vec3 color = accumColor + (1. - accumAlpha) * bgColor;
-  float opacity = accumAlpha + (1. - accumAlpha) * u_colorBack.a;
-  color = clamp(color, 0., 1.);
-  opacity = clamp(opacity, 0., 1.);
-
-  
-  color += 1. / 256. * (fract(sin(dot(.014 * gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453123) - .5);
-
-
-  fragColor = vec4(color, opacity);
-}`
-
+/** All 30 shaders published by paper.design, in canvas-picker order. */
 export const SHADERS: ShaderDef[] = [
-  {
-    id: 'mesh-gradient',
-    name: 'Mesh gradient',
-    frag: MESH_GRADIENT_FRAG,
+  def('mesh-gradient', 'Mesh gradient', MeshGradient as ShaderComponent, meshGradientPresets, {
+    maxColors: 10,
+    animated: true,
     params: [
-      { key: 'u_distortion', label: 'Distortion', min: 0, max: 1, step: 0.01, default: 0.15 },
-      { key: 'u_swirl', label: 'Swirl', min: 0, max: 1, step: 0.01, default: 0.15 },
-      { key: 'u_grainMixer', label: 'Grain mixer', min: 0, max: 1, step: 0.01, default: 0 },
-      { key: 'u_grainOverlay', label: 'Grain overlay', min: 0, max: 1, step: 0.01, default: 0.15 },
+      P('distortion', 'Distortion', 0, 1, 0.01),
+      P('swirl', 'Swirl', 0, 1, 0.01),
+      P('grainMixer', 'Grain mixer', 0, 1, 0.01),
+      P('grainOverlay', 'Grain overlay', 0, 1, 0.01),
     ],
-  },
-  {
-    id: 'dot-orbit',
-    name: 'Dot orbit',
-    frag: DOT_ORBIT_FRAG,
+  }),
+  def('static-mesh-gradient', 'Static mesh gradient', StaticMeshGradient as ShaderComponent, staticMeshGradientPresets, {
+    maxColors: 10,
+    animated: true,
+    params: [
+      P('positions', 'Positions', 0, 100, 1),
+      P('waveX', 'Wave X', 0, 1, 0.01),
+      P('waveXShift', 'Wave X shift', 0, 1, 0.01),
+      P('waveY', 'Wave Y', 0, 1, 0.01),
+      P('waveYShift', 'Wave Y shift', 0, 1, 0.01),
+      P('mixing', 'Mixing', 0, 1, 0.01),
+      P('grainMixer', 'Grain mixer', 0, 1, 0.01),
+      P('grainOverlay', 'Grain overlay', 0, 1, 0.01),
+    ],
+  }),
+  def('static-radial-gradient', 'Static radial gradient', StaticRadialGradient as ShaderComponent, staticRadialGradientPresets, {
+    maxColors: 10,
     hasBack: true,
-    hasNoise: true,
+    animated: true,
     params: [
-      { key: 'u_count', label: 'Count', min: 2, max: 20, step: 1, default: 7 },
-      { key: 'u_size', label: 'Size', min: 0.01, max: 1, step: 0.01, default: 0.4 },
+      P('radius', 'Radius', 0, 3, 0.01),
+      P('focalDistance', 'Focal distance', 0, 3, 0.01),
+      P('focalAngle', 'Focal angle', 0, 360, 1),
+      P('falloff', 'Falloff', -1, 1, 0.01),
+      P('mixing', 'Mixing', 0, 1, 0.01),
+      P('distortion', 'Distortion', 0, 1, 0.01),
+      P('distortionShift', 'Distortion shift', -1, 1, 0.01),
+      P('distortionFreq', 'Distortion freq', 0, 20, 0.1),
+      P('grainMixer', 'Grain mixer', 0, 1, 0.01),
+      P('grainOverlay', 'Grain overlay', 0, 1, 0.01),
     ],
-  },
-  {
-    id: 'bloom-dots',
-    name: 'Bloom dots',
-    frag: BLOOM_DOTS_FRAG,
+  }),
+  def('grain-gradient', 'Grain gradient', GrainGradient as ShaderComponent, grainGradientPresets, {
+    maxColors: 7,
     hasBack: true,
-    hasNoise: true,
-    extraColorUniforms: [{ key: 'u_colorBloom', label: 'Bloom' }],
+    animated: true,
     params: [
-      { key: 'u_density', label: 'Density', min: 0, max: 1, step: 0.01, default: 0.5 },
-      { key: 'u_spotty', label: 'Spotty', min: 0, max: 1, step: 0.01, default: 0.5 },
-      { key: 'u_midSize', label: 'Mid size', min: 0, max: 1, step: 0.01, default: 0.5 },
-      { key: 'u_midIntensity', label: 'Mid intensity', min: 0, max: 1, step: 0.01, default: 0.5 },
-      { key: 'u_intensity', label: 'Intensity', min: 0, max: 1, step: 0.01, default: 0.5 },
-      { key: 'u_bloom', label: 'Bloom', min: 0, max: 1, step: 0.01, default: 0.5 },
+      P('softness', 'Softness', 0, 1, 0.01),
+      P('intensity', 'Intensity', 0, 1, 0.01),
+      P('noise', 'Noise', 0, 1, 0.01),
+      P('shape', 'Shape', 0, 7, 1, { enum: GrainGradientShapes }),
     ],
-  },
-  {
-    id: 'grainy-radial',
-    name: 'Grainy radial',
-    frag: GRAINY_RADIAL_FRAG,
+  }),
+  def('swirl', 'Swirl', Swirl as ShaderComponent, swirlPresets, {
+    maxColors: 10,
     hasBack: true,
+    animated: true,
     params: [
-      { key: 'u_radius', label: 'Radius', min: 0, max: 1, step: 0.01, default: 0.5 },
-      { key: 'u_focalDistance', label: 'Focal distance', min: 0, max: 1, step: 0.01, default: 0.5 },
-      { key: 'u_focalAngle', label: 'Focal angle', min: 0, max: 360, step: 1, default: 0 },
-      { key: 'u_falloff', label: 'Falloff', min: 0, max: 1, step: 0.01, default: 0.5 },
-      { key: 'u_mixing', label: 'Mixing', min: 0, max: 1, step: 0.01, default: 0.5 },
-      { key: 'u_distortion', label: 'Distortion', min: 0, max: 1, step: 0.01, default: 0 },
-      { key: 'u_grainOverlay', label: 'Grain overlay', min: 0, max: 1, step: 0.01, default: 0.15 },
+      P('bandCount', 'Bands', 0, 15, 1),
+      P('twist', 'Twist', 0, 1, 0.01),
+      P('center', 'Center', 0, 1, 0.01),
+      P('proportion', 'Proportion', 0, 1, 0.01),
+      P('softness', 'Softness', 0, 1, 0.01),
+      P('noiseFrequency', 'Noise freq', 0, 1, 0.01),
+      P('noise', 'Noise', 0, 1, 0.01),
     ],
-  },
-  {
-    id: 'spiral-bands',
-    name: 'Spiral bands',
-    frag: SPIRAL_BANDS_FRAG,
+  }),
+  def('smoke-ring', 'Smoke ring', SmokeRing as ShaderComponent, smokeRingPresets, {
+    maxColors: 10,
     hasBack: true,
+    animated: true,
     params: [
-      { key: 'u_bandCount', label: 'Bands', min: 2, max: 12, step: 1, default: 5 },
-      { key: 'u_twist', label: 'Twist', min: 0, max: 2, step: 0.01, default: 0.5 },
-      { key: 'u_proportion', label: 'Proportion', min: 0, max: 1, step: 0.01, default: 0.5 },
-      { key: 'u_softness', label: 'Softness', min: 0, max: 1, step: 0.01, default: 0.5 },
-      { key: 'u_noise', label: 'Noise', min: 0, max: 1, step: 0.01, default: 0 },
-      { key: 'u_noiseFrequency', label: 'Noise freq', min: 0, max: 10, step: 0.1, default: 2 },
+      P('noiseScale', 'Noise scale', 0.01, 5, 0.01),
+      P('thickness', 'Thickness', 0.01, 1, 0.01),
+      P('radius', 'Radius', 0, 1, 0.01),
+      P('innerShape', 'Inner shape', 0, 4, 0.01),
+      P('noiseIterations', 'Noise iterations', 1, 8, 1),
     ],
-  },
-  {
-    id: 'sun-rays',
-    name: 'Sun rays',
-    frag: SUN_RAYS_FRAG,
+  }),
+  def('god-rays', 'God rays', GodRays as ShaderComponent, godRaysPresets, {
+    maxColors: 5,
     hasBack: true,
+    extraColors: [{ key: 'colorBloom', label: 'Bloom color' }],
+    animated: true,
     params: [
-      { key: 'u_scale', label: 'Scale', min: 0.1, max: 4, step: 0.05, default: 1 },
-      { key: 'u_density', label: 'Density', min: 0, max: 1, step: 0.01, default: 0.5 },
-      { key: 'u_angle1', label: 'Angle 1', min: 0, max: 360, step: 1, default: 0 },
-      { key: 'u_angle2', label: 'Angle 2', min: 0, max: 360, step: 1, default: 180 },
-      { key: 'u_length', label: 'Length', min: 0, max: 1, step: 0.01, default: 0.8 },
-      { key: 'u_blur', label: 'Blur', min: 0, max: 1, step: 0.01, default: 0.1 },
-      { key: 'u_fadeIn', label: 'Fade in', min: 0, max: 1, step: 0.01, default: 0 },
-      { key: 'u_fadeOut', label: 'Fade out', min: 0, max: 1, step: 0.01, default: 0 },
-      { key: 'u_edges', label: 'Edges', min: 0, max: 1, step: 1, default: 0, bool: true },
+      P('spotty', 'Spotty', 0, 1, 0.01),
+      P('midSize', 'Mid size', 0, 1, 0.01),
+      P('midIntensity', 'Mid intensity', 0, 1, 0.01),
+      P('density', 'Density', 0, 1, 0.01),
+      P('intensity', 'Intensity', 0, 1, 0.01),
+      P('bloom', 'Bloom', 0, 1, 0.01),
     ],
-  },
+  }),
+  def('metaballs', 'Metaballs', Metaballs as ShaderComponent, metaballsPresets, {
+    maxColors: 8,
+    hasBack: true,
+    animated: true,
+    params: [P('count', 'Count', 1, 20, 1), P('size', 'Size', 0, 1, 0.01)],
+  }),
+  def('dot-orbit', 'Dot orbit', DotOrbit as ShaderComponent, dotOrbitPresets, {
+    maxColors: 10,
+    hasBack: true,
+    animated: true,
+    params: [
+      P('size', 'Size', 0, 1, 0.01),
+      P('sizeRange', 'Size range', 0, 1, 0.01),
+      P('spreading', 'Spreading', 0, 1, 0.01),
+      P('stepsPerColor', 'Steps per color', 1, 4, 1),
+    ],
+  }),
+  def('simplex-noise', 'Simplex noise', SimplexNoise as ShaderComponent, simplexNoisePresets, {
+    maxColors: 10,
+    animated: true,
+    params: [P('stepsPerColor', 'Steps per color', 1, 10, 1), P('softness', 'Softness', 0, 1, 0.01)],
+  }),
+  def('neuro-noise', 'Neuro noise', NeuroNoise as ShaderComponent, neuroNoisePresets, {
+    hasBack: true,
+    extraColors: [
+      { key: 'colorFront', label: 'Foreground' },
+      { key: 'colorMid', label: 'Mid' },
+    ],
+    animated: true,
+    params: [P('brightness', 'Brightness', 0, 1, 0.01), P('contrast', 'Contrast', 0, 1, 0.01)],
+  }),
+  def('perlin-noise', 'Perlin noise', PerlinNoise as ShaderComponent, perlinNoisePresets, {
+    hasBack: true,
+    extraColors: [{ key: 'colorFront', label: 'Foreground' }],
+    animated: true,
+    params: [
+      P('proportion', 'Proportion', 0, 1, 0.01),
+      P('softness', 'Softness', 0, 1, 0.01),
+      P('octaveCount', 'Octaves', 1, 8, 1),
+      P('persistence', 'Persistence', 0.3, 1, 0.01),
+      P('lacunarity', 'Lacunarity', 1.5, 10, 0.1),
+    ],
+  }),
+  def('waves', 'Waves', Waves as ShaderComponent, wavesPresets, {
+    hasBack: true,
+    extraColors: [{ key: 'colorFront', label: 'Foreground' }],
+    params: [
+      P('rotation', 'Rotation', 0, 360, 1),
+      P('shape', 'Shape', 0, 3, 0.01),
+      P('frequency', 'Frequency', 0, 2, 0.01),
+      P('amplitude', 'Amplitude', 0, 1, 0.01),
+      P('spacing', 'Spacing', 0, 2, 0.01),
+      P('proportion', 'Proportion', 0, 1, 0.01),
+      P('softness', 'Softness', 0, 1, 0.01),
+    ],
+  }),
+  def('voronoi', 'Voronoi', Voronoi as ShaderComponent, voronoiPresets, {
+    maxColors: 5,
+    extraColors: [
+      { key: 'colorGap', label: 'Gap' },
+      { key: 'colorGlow', label: 'Glow' },
+    ],
+    animated: true,
+    params: [
+      P('stepsPerColor', 'Steps per color', 1, 3, 1),
+      P('distortion', 'Distortion', 0, 0.5, 0.01),
+      P('gap', 'Gap', 0, 0.1, 0.005),
+      P('glow', 'Glow', 0, 1, 0.01),
+    ],
+  }),
+  def('warp', 'Warp', Warp as ShaderComponent, warpPresets, {
+    maxColors: 10,
+    animated: true,
+    params: [
+      P('proportion', 'Proportion', 0, 1, 0.01),
+      P('softness', 'Softness', 0, 1, 0.01),
+      P('shape', 'Pattern', 0, 2, 1, { enum: WarpPatterns }),
+      P('shapeScale', 'Pattern scale', 0, 1, 0.01),
+      P('distortion', 'Distortion', 0, 1, 0.01),
+      P('swirl', 'Swirl', 0, 1, 0.01),
+      P('swirlIterations', 'Swirl iterations', 2, 20, 1),
+    ],
+  }),
+  def('spiral', 'Spiral', Spiral as ShaderComponent, spiralPresets, {
+    hasBack: true,
+    extraColors: [{ key: 'colorFront', label: 'Foreground' }],
+    animated: true,
+    params: [
+      P('density', 'Density', 0, 1, 0.01),
+      P('distortion', 'Distortion', 0, 1, 0.01),
+      P('strokeWidth', 'Stroke width', 0, 1, 0.01),
+      P('strokeTaper', 'Stroke taper', 0, 1, 0.01),
+      P('strokeCap', 'Stroke cap', 0, 1, 0.01),
+      P('noise', 'Noise', 0, 1, 0.01),
+      P('noiseFrequency', 'Noise freq', 0, 1, 0.01),
+      P('softness', 'Softness', 0, 1, 0.01),
+    ],
+  }),
+  def('color-panels', 'Color panels', ColorPanels as ShaderComponent, colorPanelsPresets, {
+    maxColors: 7,
+    hasBack: true,
+    animated: true,
+    params: [
+      P('angle1', 'Angle 1', -1, 1, 0.01),
+      P('angle2', 'Angle 2', -1, 1, 0.01),
+      P('length', 'Length', 0, 3, 0.01),
+      P('edges', 'Edge highlight', 0, 1, 1, { bool: true }),
+      P('blur', 'Blur', 0, 0.5, 0.01),
+      P('fadeIn', 'Fade in', 0, 1, 0.01),
+      P('fadeOut', 'Fade out', 0, 1, 0.01),
+      P('density', 'Density', 0.25, 7, 0.05),
+      P('gradient', 'Gradient', 0, 1, 0.01),
+    ],
+  }),
+  def('pulsing-border', 'Pulsing border', PulsingBorder as ShaderComponent, pulsingBorderPresets, {
+    maxColors: 5,
+    hasBack: true,
+    animated: true,
+    params: [
+      P('roundness', 'Roundness', 0, 1, 0.01),
+      P('thickness', 'Thickness', 0, 1, 0.01),
+      P('margin', 'Margin', 0, 1, 0.01),
+      P('aspectRatio', 'Aspect ratio', 0, 1, 1, { enum: PulsingBorderAspectRatios }),
+      P('softness', 'Softness', 0, 1, 0.01),
+      P('intensity', 'Intensity', 0, 1, 0.01),
+      P('bloom', 'Bloom', 0, 1, 0.01),
+      P('spots', 'Spots', 1, 4, 1),
+      P('spotSize', 'Spot size', 0, 1, 0.01),
+      P('pulse', 'Pulse', 0, 1, 0.01),
+      P('smoke', 'Smoke', 0, 1, 0.01),
+      P('smokeSize', 'Smoke size', 0, 1, 0.01),
+    ],
+  }),
+  def('dithering', 'Dithering', Dithering as ShaderComponent, ditheringPresets, {
+    hasBack: true,
+    extraColors: [{ key: 'colorFront', label: 'Foreground' }],
+    animated: true,
+    params: [
+      P('shape', 'Shape', 0, 7, 1, { enum: DitheringShapes }),
+      P('type', 'Type', 0, 4, 1, { enum: DitheringTypes }),
+      P('size', 'Pixel size', 0.5, 20, 0.1),
+    ],
+  }),
+  def('dot-grid', 'Dot grid', DotGrid as ShaderComponent, dotGridPresets, {
+    hasBack: true,
+    extraColors: [
+      { key: 'colorFill', label: 'Fill' },
+      { key: 'colorStroke', label: 'Stroke' },
+    ],
+    params: [
+      P('size', 'Dot size', 1, 100, 1),
+      P('gapX', 'Gap X', 2, 500, 1),
+      P('gapY', 'Gap Y', 2, 500, 1),
+      P('strokeWidth', 'Stroke width', 0, 50, 0.5),
+      P('sizeRange', 'Size range', 0, 1, 0.01),
+      P('opacityRange', 'Opacity range', 0, 1, 0.01),
+      P('shape', 'Shape', 0, 3, 1, { enum: DotGridShapes }),
+    ],
+  }),
+  def('halftone-dots', 'Halftone dots', HalftoneDots as ShaderComponent, halftoneDotsPresets, {
+    hasBack: true,
+    extraColors: [{ key: 'colorFront', label: 'Foreground' }],
+    image: 'optional',
+    animated: true,
+    params: [
+      P('size', 'Cell size', 0, 1, 0.01),
+      P('grid', 'Grid', 0, 1, 1, { enum: HalftoneDotsGrids }),
+      P('radius', 'Dot radius', 0, 2, 0.01),
+      P('contrast', 'Contrast', 0, 1, 0.01),
+      P('originalColors', 'Original colors', 0, 1, 1, { bool: true }),
+      P('inverted', 'Inverted', 0, 1, 1, { bool: true }),
+      P('grainMixer', 'Grain mixer', 0, 1, 0.01),
+      P('grainOverlay', 'Grain overlay', 0, 1, 0.01),
+      P('grainSize', 'Grain size', 0, 1, 0.01),
+      P('type', 'Type', 0, 3, 1, { enum: HalftoneDotsTypes }),
+    ],
+  }),
+  def('halftone-cmyk', 'Halftone CMYK', HalftoneCmyk as ShaderComponent, halftoneCmykPresets, {
+    hasBack: true,
+    extraColors: [
+      { key: 'colorC', label: 'Cyan' },
+      { key: 'colorM', label: 'Magenta' },
+      { key: 'colorY', label: 'Yellow' },
+      { key: 'colorK', label: 'Black' },
+    ],
+    image: 'optional',
+    animated: true,
+    params: [
+      P('size', 'Cell size', 0, 1, 0.01),
+      P('contrast', 'Contrast', 0, 1, 0.01),
+      P('softness', 'Softness', 0, 1, 0.01),
+      P('grainSize', 'Grain size', 0, 1, 0.01),
+      P('grainMixer', 'Grain mixer', 0, 1, 0.01),
+      P('grainOverlay', 'Grain overlay', 0, 1, 0.01),
+      P('gridNoise', 'Grid noise', 0, 1, 0.01),
+      P('floodC', 'Cyan flood', 0, 1, 0.01),
+      P('floodM', 'Magenta flood', 0, 1, 0.01),
+      P('floodY', 'Yellow flood', 0, 1, 0.01),
+      P('floodK', 'Black flood', 0, 1, 0.01),
+      P('gainC', 'Cyan gain', -1, 1, 0.01),
+      P('gainM', 'Magenta gain', -1, 1, 0.01),
+      P('gainY', 'Yellow gain', -1, 1, 0.01),
+      P('gainK', 'Black gain', -1, 1, 0.01),
+      P('type', 'Type', 0, 2, 1, { enum: HalftoneCmykTypes }),
+    ],
+  }),
+  def('image-dithering', 'Image dithering', ImageDithering as ShaderComponent, imageDitheringPresets, {
+    hasBack: true,
+    extraColors: [
+      { key: 'colorFront', label: 'Foreground' },
+      { key: 'colorHighlight', label: 'Highlight' },
+    ],
+    image: 'optional',
+    animated: true,
+    params: [
+      P('type', 'Type', 0, 4, 1, { enum: DitheringTypes }),
+      P('size', 'Pixel size', 0.5, 20, 0.1),
+      P('colorSteps', 'Color steps', 1, 7, 1),
+      P('originalColors', 'Original colors', 0, 1, 1, { bool: true }),
+      P('inverted', 'Inverted', 0, 1, 1, { bool: true }),
+    ],
+  }),
+  def('paper-texture', 'Paper texture', PaperTexture as ShaderComponent, paperTexturePresets, {
+    hasBack: true,
+    extraColors: [
+      { key: 'colorPaper', label: 'Paper' },
+      { key: 'colorShadow', label: 'Shadow' },
+    ],
+    image: 'optional',
+    animated: true,
+    params: [
+      P('blending', 'Blending', 0, 1, 0.01),
+      P('distortion', 'Distortion', -1, 1, 0.01),
+      P('clip', 'Clip to image', 0, 1, 1, { bool: true }),
+      P('angle', 'Light angle', 0, 360, 1),
+      P('seed', 'Seed', 0, 1000, 1),
+      P('roughness', 'Roughness', 0, 1, 0.01),
+      P('roughnessSize', 'Roughness size', 0, 1, 0.01),
+      P('roughnessRows', 'Roughness rows', 0, 1, 0.01),
+      P('fiber', 'Fiber', 0, 1, 0.01),
+      P('fiberSize', 'Fiber size', 0, 1, 0.01),
+      P('folds', 'Folds', 0, 1, 0.01),
+      P('foldSizeX', 'Fold size X', 0, 1, 0.01),
+      P('foldSizeY', 'Fold size Y', 0, 1, 0.01),
+      P('wrinkles', 'Wrinkles', 0, 1, 0.01),
+      P('wrinkleSize', 'Wrinkle size', 0, 1, 0.01),
+      P('crumples', 'Crumples', 0, 1, 0.01),
+      P('crumpleCount', 'Crumple count', 2, 15, 1),
+      P('drops', 'Drops', 0, 1, 0.01),
+    ],
+  }),
+  def('fluted-glass', 'Fluted glass', FlutedGlass as ShaderComponent, flutedGlassPresets, {
+    hasBack: true,
+    extraColors: [
+      { key: 'colorShadow', label: 'Shadow' },
+      { key: 'colorHighlight', label: 'Highlight' },
+    ],
+    image: 'optional',
+    animated: true,
+    params: [
+      P('shadows', 'Shadows', 0, 1, 0.01),
+      P('size', 'Grid size', 0, 1, 0.01),
+      P('angle', 'Angle', 0, 180, 1),
+      P('distortion', 'Distortion', 0, 1, 0.01),
+      P('shift', 'Shift', -1, 1, 0.01),
+      P('blur', 'Blur', 0, 1, 0.01),
+      P('edges', 'Edges', 0, 1, 0.01),
+      P('margin', 'Margin', 0, 1, 0.01),
+      P('stretch', 'Stretch', 0, 1, 0.01),
+      P('distortionShape', 'Distortion shape', 0, 5, 1, { enum: GlassDistortionShapes }),
+      P('highlights', 'Highlights', 0, 1, 0.01),
+      P('shape', 'Grid shape', 0, 5, 1, { enum: GlassGridShapes }),
+      P('grainMixer', 'Grain mixer', 0, 1, 0.01),
+      P('grainOverlay', 'Grain overlay', 0, 1, 0.01),
+    ],
+  }),
+  def('lens-distortion', 'Lens distortion', LensDistortion as ShaderComponent, lensDistortionPresets, {
+    image: 'optional',
+    animated: true,
+    params: [
+      P('spread', 'Spread', 0, 1, 0.01),
+      P('bias', 'Bias', -1, 1, 0.01),
+      P('angle', 'Angle', 0, 360, 1),
+      P('perspective', 'Perspective', 0, 1, 0.01),
+      P('count', 'Layers', 2, 50, 1),
+      P('dispersion', 'Dispersion', 0, 1, 0.01),
+      P('dispersionShift', 'Dispersion shift', -1, 1, 0.01),
+      P('dispersionColor', 'Dispersion hue', 0, 1, 0.01),
+      P('focusCenter', 'Focus center', 0, 1, 0.01),
+      P('focusEdges', 'Focus edges', 0, 1, 0.01),
+      P('swirl', 'Swirl', -1, 1, 0.01),
+      P('noise', 'Noise', 0, 1, 0.01),
+      P('noiseFrequency', 'Noise freq', 0, 1, 0.01),
+      P('noiseOffset', 'Noise offset', 0, 1, 0.01),
+      P('lensBulge', 'Lens bulge', -1, 1, 0.01),
+      P('lensCircle', 'Lens circle', 0, 1, 0.01),
+      P('grainMixer', 'Grain mixer', 0, 1, 0.01),
+      P('grainOverlay', 'Grain overlay', 0, 1, 0.01),
+      P('imageX', 'Image X', -1, 1, 0.01),
+      P('imageY', 'Image Y', -1, 1, 0.01),
+    ],
+  }),
+  def('liquid-metal', 'Liquid metal', LiquidMetal as ShaderComponent, liquidMetalPresets, {
+    hasBack: true,
+    extraColors: [{ key: 'colorTint', label: 'Tint' }],
+    image: 'optional',
+    animated: true,
+    params: [
+      P('repetition', 'Repetition', 1, 10, 1),
+      P('shiftRed', 'Red shift', -1, 1, 0.01),
+      P('shiftBlue', 'Blue shift', -1, 1, 0.01),
+      P('contour', 'Contour', 0, 1, 0.01),
+      P('softness', 'Softness', 0, 1, 0.01),
+      P('distortion', 'Distortion', 0, 1, 0.01),
+      P('angle', 'Angle', 0, 360, 1),
+      P('shape', 'Shape', 0, 4, 1, { enum: LiquidMetalShapes }),
+    ],
+  }),
+  def('water', 'Water', Water as ShaderComponent, waterPresets, {
+    hasBack: true,
+    extraColors: [{ key: 'colorHighlight', label: 'Highlight' }],
+    image: 'optional',
+    animated: true,
+    params: [
+      P('highlights', 'Highlights', 0, 1, 0.01),
+      P('layering', 'Layering', 0, 1, 0.01),
+      P('edges', 'Edges', 0, 1, 0.01),
+      P('caustic', 'Caustic', 0, 1, 0.01),
+      P('waves', 'Waves', 0, 1, 0.01),
+      P('size', 'Size', 0.01, 7, 0.01),
+    ],
+  }),
+  def('heatmap', 'Heatmap', Heatmap as ShaderComponent, heatmapPresets, {
+    maxColors: 10,
+    hasBack: true,
+    image: 'required',
+    animated: true,
+    params: [
+      P('contour', 'Contour', 0, 1, 0.01),
+      P('angle', 'Angle', 0, 360, 1),
+      P('noise', 'Noise', 0, 1, 0.01),
+      P('innerGlow', 'Inner glow', 0, 1, 0.01),
+      P('outerGlow', 'Outer glow', 0, 1, 0.01),
+    ],
+  }),
+  def('gem-smoke', 'Gem smoke', GemSmoke as ShaderComponent, gemSmokePresets, {
+    maxColors: 6,
+    hasBack: true,
+    extraColors: [{ key: 'colorInner', label: 'Inner' }],
+    image: 'optional',
+    animated: true,
+    params: [
+      P('innerDistortion', 'Inner distortion', 0, 1, 0.01),
+      P('outerDistortion', 'Outer distortion', 0, 1, 0.01),
+      P('outerGlow', 'Outer glow', 0, 1, 0.01),
+      P('innerGlow', 'Inner glow', 0, 1, 0.01),
+      P('offset', 'Offset', -1, 1, 0.01),
+      P('angle', 'Angle', 0, 360, 1),
+      P('size', 'Size', 0, 1, 0.01),
+      P('shape', 'Shape', 0, 4, 1, { enum: GemSmokeShapes }),
+    ],
+  }),
 ]
+
+const SHADER_BY_ID = new Map(SHADERS.map((s) => [s.id, s]))
+
+/** Legacy shader ids from the hand-ported GLSL era → official component. */
+const LEGACY_KINDS: Record<string, string> = {
+  'bloom-dots': 'god-rays',
+  'grainy-radial': 'static-radial-gradient',
+  'spiral-bands': 'swirl',
+  'sun-rays': 'color-panels',
+}
 
 export function shaderDef(kind: string | undefined): ShaderDef | undefined {
-  return SHADERS.find((s) => s.id === kind)
+  return SHADER_BY_ID.get(LEGACY_KINDS[kind ?? ''] ?? kind ?? '')
 }
 
-export const SHADER_VERT = VERT
-
-export interface ShaderPreset {
-  name: string
-  kind: string
-  colors: string[]
-  back?: string
-  params?: Record<string, number>
+/** Migrates a stored shader fill to the official-package model: legacy kind ids
+ * and `u_`-prefixed uniform keys become component prop names. */
+export function migrateShaderFill(fill: Fill): Fill {
+  if (fill.type !== 'shader') return fill
+  let next = fill
+  const kind = LEGACY_KINDS[fill.shaderKind ?? '']
+  if (kind && kind !== fill.shaderKind) next = { ...next, shaderKind: kind }
+  if (next.shaderParams && Object.keys(next.shaderParams).some((k) => k.startsWith('u_'))) {
+    next = {
+      ...next,
+      shaderParams: Object.fromEntries(Object.entries(next.shaderParams).map(([k, v]) => [k.replace(/^u_/, ''), v])),
+    }
+  }
+  if (next.shaderExtraColors && Object.keys(next.shaderExtraColors).some((k) => k.startsWith('u_'))) {
+    next = {
+      ...next,
+      shaderExtraColors: Object.fromEntries(Object.entries(next.shaderExtraColors).map(([k, v]) => [k.replace(/^u_/, ''), v])),
+    }
+  }
+  return next
 }
 
-/** Starter presets combining a shader with Paper-like color palettes. */
-export const SHADER_PRESETS: ShaderPreset[] = [
-  {
-    name: 'Grainy sunset',
-    kind: 'mesh-gradient',
-    colors: ['#ff7a18', '#af2896', '#509bf5', '#ffd319', '#1b1464'],
-    params: { u_distortion: 0.12, u_swirl: 0.25, u_grainOverlay: 0.2 },
-  },
-  {
-    name: 'Aurora',
-    kind: 'mesh-gradient',
-    colors: ['#0ea5e9', '#22c55e', '#84cc16', '#0f172a', '#06b6d4'],
-    params: { u_distortion: 0.2, u_swirl: 0.35 },
-  },
-  {
-    name: 'Cotton candy',
-    kind: 'mesh-gradient',
-    colors: ['#fbc2eb', '#a6c1ee', '#f5b7d4', '#c471f5', '#fa71cd'],
-    params: { u_grainOverlay: 0.1 },
-  },
-  {
-    name: 'Deep space',
-    kind: 'mesh-gradient',
-    colors: ['#0f0c29', '#302b63', '#24243e', '#00c9ff', '#92fe9d'],
-    params: { u_distortion: 0.3, u_swirl: 0.5, u_grainOverlay: 0.25 },
-  },
-  {
-    name: 'Bloom',
-    kind: 'bloom-dots',
-    colors: ['#f472b6', '#a78bfa', '#38bdf8'],
-    back: '#0b0b12',
-    params: { u_density: 0.55, u_bloom: 0.6, u_spotty: 0.4 },
-  },
-  {
-    name: 'Solar flare',
-    kind: 'grainy-radial',
-    colors: ['#f97316', '#facc15', '#ef4444', '#7c2d12'],
-    back: '#0c0a09',
-    params: { u_radius: 0.55, u_falloff: 0.6, u_grainOverlay: 0.2 },
-  },
-  {
-    name: 'Nebula',
-    kind: 'spiral-bands',
-    colors: ['#8b5cf6', '#ec4899', '#38bdf8', '#0ea5e9'],
-    back: '#0f0a1e',
-    params: { u_bandCount: 6, u_twist: 0.9, u_softness: 0.6 },
-  },
-  {
-    name: 'Sunburst',
-    kind: 'sun-rays',
-    colors: ['#fbbf24', '#f97316'],
-    back: '#1c0a00',
-    params: { u_density: 0.5, u_length: 0.85, u_blur: 0.15 },
-  },
-  {
-    name: 'Dot orbit',
-    kind: 'dot-orbit',
-    colors: ['#a78bfa', '#f472b6', '#38bdf8'],
-    back: '#111111',
-    params: { u_count: 8, u_size: 0.45 },
-  },
-  {
-    name: 'Warm dots',
-    kind: 'dot-orbit',
-    colors: ['#f97316', '#facc15', '#ef4444'],
-    back: '#1c1917',
-    params: { u_count: 11, u_size: 0.55 },
-  },
+function enumKey(map: EnumMap, value: number): string {
+  for (const [k, v] of Object.entries(map)) if (v === Math.round(value)) return k
+  return Object.keys(map)[0]
+}
+
+/** Sizing props shared by every official component (ShaderSizingParams). */
+const SIZING_KEYS = ['scale', 'rotation', 'offsetX', 'offsetY', 'originX', 'originY', 'worldWidth', 'worldHeight'] as const
+
+/** Named color props carried on Fill.shaderExtraColors (keyed by prop name). */
+const EXTRA_COLOR_KEYS = [
+  'colorFront',
+  'colorMid',
+  'colorBloom',
+  'colorInner',
+  'colorShadow',
+  'colorHighlight',
+  'colorPaper',
+  'colorTint',
+  'colorGap',
+  'colorGlow',
+  'colorFill',
+  'colorStroke',
+  'colorC',
+  'colorM',
+  'colorY',
+  'colorK',
 ]
+
+/** Builds the official component's props from a shader fill. */
+export function shaderProps(fill: Fill, def: ShaderDef, image?: string): Record<string, unknown> {
+  const stored = fill.shaderParams ?? {}
+  const props: Record<string, unknown> = {}
+  if (def.maxColors > 0) {
+    const colors = (fill.shaderColors ?? []).filter(Boolean).slice(0, def.maxColors)
+    if (colors.length > 0) props.colors = colors
+  }
+  if (def.hasBack && fill.shaderBack !== undefined) props.colorBack = fill.shaderBack
+  for (const c of def.extraColors ?? []) {
+    const v = fill.shaderExtraColors?.[c.key]
+    if (v !== undefined) props[c.key] = v
+  }
+  for (const p of def.params) {
+    const v = stored[p.key]
+    if (v === undefined) continue
+    props[p.key] = p.bool ? v !== 0 : p.enum ? enumKey(p.enum, v) : v
+  }
+  if (stored.speed !== undefined) props.speed = stored.speed
+  for (const k of SIZING_KEYS) if (stored[k] !== undefined) props[k] = stored[k]
+  if (stored.fit !== undefined) props.fit = enumKey(ShaderFitOptions, stored.fit)
+  if (def.image) props.image = fill.shaderImage ?? image
+  return props
+}
+
+/** Converts an official preset into a shader Fill. */
+export function presetFill(def: ShaderDef, preset: ShaderPreset): Fill {
+  const params: Record<string, number> = {}
+  for (const p of def.params) {
+    const v = preset.params[p.key]
+    if (v === undefined) continue
+    if (p.bool) params[p.key] = v ? 1 : 0
+    else if (p.enum) params[p.key] = p.enum[String(v)] ?? (typeof v === 'number' ? v : 0)
+    else if (typeof v === 'number') params[p.key] = v
+  }
+  for (const k of SIZING_KEYS) if (typeof preset.params[k] === 'number') params[k] = preset.params[k] as number
+  if (typeof preset.params.speed === 'number') params.speed = preset.params.speed as number
+  if (preset.params.fit !== undefined) params.fit = ShaderFitOptions[preset.params.fit as keyof typeof ShaderFitOptions] ?? 0
+  const extraColors: Record<string, string> = {}
+  for (const key of EXTRA_COLOR_KEYS) {
+    const v = preset.params[key]
+    if (typeof v === 'string') extraColors[key] = v
+  }
+  return {
+    type: 'shader',
+    shaderKind: def.id,
+    shaderColors: Array.isArray(preset.params.colors) ? (preset.params.colors as string[]).slice(0, def.maxColors || 10) : undefined,
+    shaderBack: typeof preset.params.colorBack === 'string' ? preset.params.colorBack : undefined,
+    shaderExtraColors: Object.keys(extraColors).length > 0 ? extraColors : undefined,
+    shaderParams: params,
+    isVisible: true,
+  }
+}
+
+/** True when the fill's stored params/colors still match an official preset exactly. */
+export function presetMatch(fill: Fill, def: ShaderDef, preset: ShaderPreset): boolean {
+  const expected = presetFill(def, preset)
+  const sameList = (a?: string[], b?: string[]) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+  if (!sameList(fill.shaderColors, expected.shaderColors)) return false
+  if ((fill.shaderBack ?? null) !== (expected.shaderBack ?? null)) return false
+  if (!sameList(Object.entries(fill.shaderExtraColors ?? {}).flat() as string[], Object.entries(expected.shaderExtraColors ?? {}).flat() as string[])) return false
+  const a = fill.shaderParams ?? {}
+  const b = expected.shaderParams ?? {}
+  for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    if (Math.abs((a[k] ?? 0) - (b[k] ?? 0)) > 1e-6) return false
+  }
+  return true
+}
+

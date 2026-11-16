@@ -8,6 +8,7 @@ import { parseHash } from './links'
 import { pageArtboards, pageOfNode } from './doc'
 import { showToast } from '../ui/Toast'
 import { SHADER_PRESETS } from './fills'
+import { migrateShaderFill } from './shaders'
 import {
   createDocMeta,
   currentDocId,
@@ -101,14 +102,19 @@ const LEGACY_KEY = 'paper-canvas-doc-v1'
 function normalizeDoc(value: unknown): Doc | null {
   if (!value || typeof value !== 'object') return null
   const parsed = value as { pages?: DocPage[]; artboards?: string[]; nodes?: Record<string, DocNode> }
+  let doc: Doc | null = null
   if (Array.isArray(parsed.pages) && parsed.nodes) {
     const pages = parsed.pages.filter((page) => page && page.id && Array.isArray(page.artboards))
-    if (pages.length > 0) return { ...(parsed as Doc), pages, nodes: parsed.nodes }
+    if (pages.length > 0) doc = { ...(parsed as Doc), pages, nodes: parsed.nodes }
+  } else if (Array.isArray(parsed.artboards) && parsed.nodes) {
+    doc = { pages: [{ id: 'page_main', name: 'Page 1', artboards: parsed.artboards }], nodes: parsed.nodes }
   }
-  if (Array.isArray(parsed.artboards) && parsed.nodes) {
-    return { pages: [{ id: 'page_main', name: 'Page 1', artboards: parsed.artboards }], nodes: parsed.nodes }
+  if (doc) {
+    for (const node of Object.values(doc.nodes)) {
+      if (node.fills?.some((f) => f.type === 'shader')) node.fills = node.fills.map(migrateShaderFill)
+    }
   }
-  return null
+  return doc
 }
 
 function loadDoc(): Doc {

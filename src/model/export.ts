@@ -660,7 +660,7 @@ export async function copySelectionAsPng() {
  * canvas.captureStream + MediaRecorder (animated shader fills only). */
 export async function downloadShaderVideo(nodeId: string, seconds = 3) {
   const host = document.querySelector(`[data-node-id="${nodeId}"]`)
-  const canvas = host?.querySelector('canvas.shader-fill') as HTMLCanvasElement | null
+  const canvas = host?.querySelector('.shader-fill canvas, canvas.shader-fill') as HTMLCanvasElement | null
   if (!canvas || !('captureStream' in canvas) || typeof MediaRecorder === 'undefined') {
     showToast('Video export needs an animated shader fill')
     return
