@@ -268,3 +268,9 @@ npx tsc --noEmit && npx vite build
 - 从 app.paper.design 样式表补齐全部 32 个 `--cursor-*` webp 光标（此前只有 14 个）；接入：pen/text/comment/zoom(⌥=缩小) 工具光标、Alt 悬停/拖动 duplicate、Shift 轴锁 arrow-x/y、面板分隔条 resize-col/row。
 - 数字字段 label 拖动调值（Paper scrub 手势 + cursor-scrubbing）：拖 label 左右滑改数，Shift=大步长，松开一次性提交（单撤销步）。
 - Checkbox 换成 Paper `.checkbox-root` 样式：16px 控件块、`--shadow-checkbox` 真实复合阴影、superellipse 角、选中蓝色+白色对勾；`switch` 滑块样式按 Paper `.switch-root` 就绪备用。
+
+## Shader 缩略图选择器 + 控件样式 1:1
+
+- 从 shaders.paper.design 提取全部 30 种 shader 的官方预览图 → `public/shader-thumbs/<id>.webp`。
+- Inspector shader 行改为缩略图 chip（图+名+⌄），点击弹出 3 列缩略图网格（`menu-popup` 容器），当前项高亮；点外部关闭（`popup-overlay`）。
+- 验证：`?doc=` 种子文档 → 选中节点 → 打开网格 → 切 Swirl，参数面板同步。

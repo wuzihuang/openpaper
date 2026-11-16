@@ -1,0 +1,19 @@
+{
+  "pages": [{ "id": "p1", "name": "Test", "artboards": ["a1"] }],
+  "nodes": {
+    "a1": {
+      "id": "a1", "kind": "frame", "name": "Board", "parentId": null,
+      "children": ["r1"], "x": 0, "y": 0, "width": 800, "height": 600,
+      "fills": [{ "type": "solid", "color": "#ffffff", "opacity": 1 }]
+    },
+    "r1": {
+      "id": "r1", "kind": "rect", "name": "Shader Rect", "parentId": "a1",
+      "children": [], "x": 40, "y": 40, "width": 400, "height": 300,
+      "fills": [{
+        "type": "shader", "shaderKind": "mesh-gradient",
+        "shaderColors": ["#e0aaff", "#72ddf7", "#4d96ff"],
+        "shaderParams": {}, "opacity": 1
+      }]
+    }
+  }
+}
