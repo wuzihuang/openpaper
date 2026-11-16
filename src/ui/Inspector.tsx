@@ -9,6 +9,7 @@ import { countPageNodes, pageArtboards } from '../model/doc'
 import { openColorFormatMenu, openZoomMenu } from './menuActions'
 import { copyProjectLink } from '../model/navigation'
 import { normalizeCssColor } from '../model/color'
+import { FONT_FAMILIES, ensureAllFontsLoaded, ensureFontLoaded } from '../model/fonts'
 import { Icon } from './Icon'
 import { PanelResize } from './PanelResize'
 
@@ -143,6 +144,55 @@ function ColorField({
         spellCheck={false}
       />
     </label>
+  )
+}
+
+/** Paper font picker: chip opens a popup list whose items render in their own
+ * font (Google fonts lazy-loaded via fonts.ts). */
+function FontField({ value, onCommit }: { value: string; onCommit: (family: string) => void }) {
+  const [rect, setRect] = useState<DOMRect | null>(null)
+  useEffect(() => {
+    ensureFontLoaded(value)
+  }, [value])
+  return (
+    <>
+      <button
+        className="chip-field wide font-pick"
+        onClick={(event) => {
+          ensureAllFontsLoaded()
+          setRect((event.currentTarget as HTMLElement).getBoundingClientRect())
+        }}
+      >
+        <span className="chip-label">Font</span>
+        <span className="font-pick-name" style={{ fontFamily: value }}>{value}</span>
+        <Icon name="chevron-down" size={10} />
+      </button>
+      {rect && (
+        <>
+          <div className="popup-overlay" onPointerDown={() => setRect(null)} />
+          <div
+            className="menu-popup font-list"
+            style={{ left: Math.max(8, rect.right - 240), top: Math.min(window.innerHeight - 340, rect.bottom + 4) }}
+          >
+            {FONT_FAMILIES.map(({ family }) => (
+              <button
+                key={family}
+                className="popup-list-item"
+                data-active={family === value}
+                style={{ fontFamily: family }}
+                onClick={() => {
+                  ensureFontLoaded(family)
+                  onCommit(family)
+                  setRect(null)
+                }}
+              >
+                {family}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </>
   )
 }
 
@@ -1294,19 +1344,7 @@ function NodeInspector({ node, parent }: { node: DocNode; parent: DocNode | null
       {node.kind === 'text' && (
         <Section title="Text">
           <TextField value={node.text ?? ''} onCommit={(v) => patch({ text: v })} />
-          <SelectField
-            label="Font"
-            wide
-            value={node.fontFamily ?? 'Inter'}
-            options={[
-              ['Inter', 'Inter'], ['SF Pro Text', 'SF Pro'], ['system-ui', 'System'],
-              ['Arial', 'Arial'], ['Helvetica', 'Helvetica'], ['Helvetica Neue', 'Helvetica Neue'],
-              ['Georgia', 'Georgia'], ['Times New Roman', 'Times New Roman'], ['Garamond', 'Garamond'],
-              ['Courier New', 'Courier New'], ['monospace', 'Monospace'], ['Menlo', 'Menlo'],
-              ['Verdana', 'Verdana'], ['Trebuchet MS', 'Trebuchet'], ['Impact', 'Impact'], ['Comic Sans MS', 'Comic Sans'],
-            ]}
-            onChange={(value) => patch({ fontFamily: value })}
-          />
+          <FontField value={node.fontFamily ?? 'Inter'} onCommit={(v) => patch({ fontFamily: v })} />
           <NumberField label="Size" value={node.fontSize ?? 14} onCommit={(v) => patch({ fontSize: Math.max(1, v) })} />
           <label className="chip-field">
             <span className="chip-label">Weight</span>

@@ -3,7 +3,7 @@
   "nodes": {
     "a1": {
       "id": "a1", "kind": "frame", "name": "Board", "parentId": null,
-      "children": ["r1"], "x": 0, "y": 0, "width": 800, "height": 600,
+      "children": ["r1", "t1"], "x": 0, "y": 0, "width": 800, "height": 600,
       "fills": [{ "type": "solid", "color": "#ffffff", "opacity": 1 }]
     },
     "r1": {
@@ -14,6 +14,11 @@
         "shaderColors": ["#e0aaff", "#72ddf7", "#4d96ff"],
         "shaderParams": {}, "opacity": 1
       }]
+    },
+    "t1": {
+      "id": "t1", "kind": "text", "name": "Title", "parentId": "a1",
+      "children": [], "x": 40, "y": 380, "width": 400, "height": 60,
+      "text": "The quick brown fox", "fontFamily": "Inter", "fontSize": 32, "color": "#111111"
     }
   }
 }

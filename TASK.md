@@ -284,3 +284,9 @@ npx tsc --noEmit && npx vite build
 ## 色值字段多格式输入
 
 - `normalizeCssColor`：ColorField 失焦时接受任意 CSS 色值（`oklch()`/`hsl()`/`rgb()`/色名/3–8 位 hex），经 canvas 解析规范化为 hex（含 alpha 后缀）；非法输入保留原样。
+
+## 字体选择器 + Google Fonts
+
+- `model/fonts.ts`：52 项字体目录（系统字体 + 38 款 Google Fonts），`ensureFontLoaded` 按需注入 css2 样式表（全字重+斜体）。
+- Inspector 字体行改为缩略 chip → 弹层列表，每项以自身字体渲染（Paper `popup-list-item-font-preview`）；打开时预载全部目录字体，选中即提交。
+- 已有文档里的任意 fontFamily 值仍会原样渲染（未匹配项自动走 Google 加载尝试）。

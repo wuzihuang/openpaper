@@ -2616,3 +2616,65 @@ button.chip-field.shader-pick {
   box-shadow: inset 0 0 0 1px var(--color-focus);
   color: var(--color-gray-1);
 }
+
+/* ---------------------------------------------------------- font picker */
+
+button.chip-field.font-pick {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: var(--radius-control);
+  background: var(--color-control);
+  box-shadow: var(--shadow-control);
+  font-size: 11px;
+  color: var(--color-gray-1);
+  cursor: default;
+  width: 100%;
+}
+
+.font-pick-name {
+  flex: 1;
+  text-align: left;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.font-pick svg {
+  color: var(--color-gray-3);
+  flex: none;
+}
+
+.font-list {
+  width: 240px;
+  max-height: 332px;
+  padding: 4px;
+}
+
+.font-list .popup-list-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  font-size: 14px;
+  color: var(--color-gray-1);
+  text-align: left;
+  cursor: default;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.font-list .popup-list-item:hover,
+.font-list .popup-list-item[data-active='true'] {
+  background: var(--color-panel-highlight-1, rgba(0, 0, 0, 0.06));
+}
