@@ -2528,3 +2528,91 @@ input[type='checkbox'].switch:checked::after {
     corner-shape: inherit;
   }
 }
+
+/* Shader picker: thumbnail chip + grid popup (official shader previews). */
+.popup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 79;
+}
+
+button.chip-field.shader-pick {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: var(--radius-control);
+  background: var(--color-control);
+  box-shadow: var(--shadow-control);
+  font-size: 11px;
+  color: var(--color-gray-1);
+  cursor: default;
+  width: 100%;
+}
+
+.shader-pick-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  object-fit: cover;
+  flex: none;
+}
+
+.shader-pick-name {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shader-pick svg {
+  color: var(--color-gray-3);
+  flex: none;
+}
+
+.shader-grid {
+  z-index: 80;
+  width: 236px;
+  padding: 4px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  max-height: 316px;
+}
+
+.shader-thumb {
+  all: unset;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 2px 5px;
+  border-radius: 6px;
+  font-size: 9px;
+  line-height: 11px;
+  color: var(--color-gray-2);
+  text-align: center;
+  cursor: default;
+}
+
+.shader-thumb img {
+  width: 64px;
+  height: 40px;
+  border-radius: 4px;
+  object-fit: cover;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12);
+}
+
+.shader-thumb:hover {
+  background: rgba(0, 0, 0, 0.045);
+}
+
+.shader-thumb[data-active='true'] {
+  background: color-mix(in oklab, var(--color-focus) 16%, transparent);
+  box-shadow: inset 0 0 0 1px var(--color-focus);
+  color: var(--color-gray-1);
+}
