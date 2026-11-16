@@ -641,6 +641,12 @@ export function Canvas() {
         frameSelection()
         return
       }
+      // Paper ⌘G group selection into a frame
+      if (mod && !event.altKey && !event.shiftKey && key === 'g') {
+        event.preventDefault()
+        frameSelection()
+        return
+      }
       // Paper ⌥1 layers / ⌥C clip
       if (!mod && event.altKey && !event.shiftKey) {
         if (event.code === 'Digit1') {

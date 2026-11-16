@@ -290,3 +290,9 @@ npx tsc --noEmit && npx vite build
 - `model/fonts.ts`：52 项字体目录（系统字体 + 38 款 Google Fonts），`ensureFontLoaded` 按需注入 css2 样式表（全字重+斜体）。
 - Inspector 字体行改为缩略 chip → 弹层列表，每项以自身字体渲染（Paper `popup-list-item-font-preview`）；打开时预载全部目录字体，选中即提交。
 - 已有文档里的任意 fontFamily 值仍会原样渲染（未匹配项自动走 Google 加载尝试）。
+
+## ⌘G Group selection 补齐
+
+- 快捷键面板一直宣传 `⌘G / ⇧⌘G`，但只有 ⇧⌘G(ungroup) 有处理器；补 `mod+g` → `frameSelection()`（Paper ⌘G 将选中项成组为 frame）。
+- 节点右键菜单在 Frame selection 前新增 `Group selection ⌘G` 项。
+- 核对其他宣传键位（⌘⇧' 像素吸附、⌥⇧C 评论、0–9 透明度 chord、⇧⌘A 反向兄弟选择、PageUp/Down 翻页、⌥⇧⌘R/F hug/fill）均已有处理器。
