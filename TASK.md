@@ -243,3 +243,56 @@ npx tsc --noEmit && npx vite build
 - **bloom-dots**（hg 源码）：光斑圆点 shader，需 `u_colorBloom` 第二颜色 uniform → ShaderDef.extraColorUniforms 通用机制 + Fill.shaderExtraColors + 检查器颜色字段。shader 共 6 种，S 菜单 14 项
 - **token 11 类型补齐**：DesignToken.type 扩展为 Paper 全集（+breakpoint/container 组织型），Theme 面板 11 分组
 - **Video 导出**（Paper exportMeta 视频）：`downloadShaderVideo` —— 含 shader 填充的节点 Export 区出现「Export video (3s)」，canvas.captureStream(30fps)+MediaRecorder → MP4（支持时）/WebM 下载
+
+## 官方 @paper-design/shaders 集成（一比一还原）
+- **依赖**：`@paper-design/shaders@0.0.82` + `@paper-design/shaders-react@0.0.82`（官方 WebGL shader + React 组件）
+- **`model/shaders.ts` 重写**：1109 行手写 GLSL 移植 → 30 个官方组件注册表；`ShaderDef` 携带 id/name/component/presets/defaults/maxColors/hasBack/extraColors/image/animated/params（数值范围取自官方 doc-comment）；`shaderProps(fill)` 将 Fill 映射为组件 props（colors/命名色/参数 bool→enum 转换/sizing keys/fit enum）；`presetFill(def, preset)` 官方预设 → Fill；`presetMatch` 反向识别当前预设
+- **旧数据迁移**：`LEGACY_KINDS` 映射 bloom-dots→god-rays、grainy-radial→static-radial-gradient、spiral-bands→swirl、sun-rays→color-panels；`u_` 前缀参数自动去前缀（`migrateShaderFill`，挂在 `normalizeDoc` 后）
+- **`canvas/ShaderFill.tsx`**：直接渲染官方组件（`className="shader-fill"` + 官方注入样式）；image 类 shader（image-dithering/paper-texture/fluted-glass/lens-distortion/liquid-metal/water/heatmap）用内置程序化示例图兜底
+- **检查器**：Shader 下拉 30 项、Preset 下拉（124 预设 + Custom 识别）、色板按 maxColors 限长、命名色字段、参数按 bool/enum/number 分列、Speed（仅 animated）
+- **S 菜单 34 项**：30 个官方 shader（各用其默认预设）+ 4 个 CSS 图案预设（改名标注 pattern）；菜单容器加 max-height 滚动
+- 验证：build ✓；Mesh gradient/Gem smoke 真实 Paper GLSL 渲染 ✓；导出选择器兼容 `.shader-fill canvas` ✓
+
+## UI/UX 一比一对齐 Paper.design（编辑器外观）
+
+- **顶部 chrome**：右侧栏首行改为 Paper 布局——头像堆（灰圆 + 蓝色 ⊕ 加人）、缩放百分比、`Copy link ⌘L` 全宽按钮；页面无选中态同样显示。
+- **面板分区**：Fill 卡改为类型下拉（Solid / Linear / Radial / Conic / Image / Pattern / Shader）；描边分区更名 Outline，原 Outline 更名 Outline offset，与 Paper 术语一致。
+- **左侧栏**：当前页面行加 ✓ 标记（Paper Pages 树样式）。
+- **细节 token**：`--color-chip`、`--shadow-control`/`--shadow-toggle`（Paper 精确的 inset+offset 复合阴影）、`corner-shape: superellipse(1.3)`（Chrome squircle）应用到 chip/控件/色板/Copy link。
+- **工具栏**：浮动白色胶囊工具栏（此前已完成，与 Paper 一致）。
+
+参照素材：app.paper.design 公开 CSS（`/assets/styles-*.css`）中的真实 token 值 + 官网 mockup 截图。
+
+## Paper 真实资源提取续批（光标全集 + 控件样式）
+
+- 从 app.paper.design 样式表补齐全部 32 个 `--cursor-*` webp 光标（此前只有 14 个）；接入：pen/text/comment/zoom(⌥=缩小) 工具光标、Alt 悬停/拖动 duplicate、Shift 轴锁 arrow-x/y、面板分隔条 resize-col/row。
+- 数字字段 label 拖动调值（Paper scrub 手势 + cursor-scrubbing）：拖 label 左右滑改数，Shift=大步长，松开一次性提交（单撤销步）。
+- Checkbox 换成 Paper `.checkbox-root` 样式：16px 控件块、`--shadow-checkbox` 真实复合阴影、superellipse 角、选中蓝色+白色对勾；`switch` 滑块样式按 Paper `.switch-root` 就绪备用。
+
+## Shader 缩略图选择器 + 控件样式 1:1
+
+- 从 shaders.paper.design 提取全部 30 种 shader 的官方预览图 → `public/shader-thumbs/<id>.webp`。
+- Inspector shader 行改为缩略图 chip（图+名+⌄），点击弹出 3 列缩略图网格（`menu-popup` 容器），当前项高亮；点外部关闭（`popup-overlay`）。
+- 验证：`?doc=` 种子文档 → 选中节点 → 打开网格 → 切 Swirl，参数面板同步。
+
+## Per-fill opacity（填充行透明度）
+
+- `Fill.opacity`（0–1）：CSS 侧在 `fillToCss` 内用 `color-mix` 折进 solid/gradient/pattern 颜色；shader 填充走元素 `opacity`；SVG 导出输出 `fill-opacity`。
+- Inspector 每个填充行新增 Opacity 数值字段（0–100，可 scrub）。
+- 已知差异：image 填充的透明度在纯 CSS background 层无法折叠，暂不生效（Paper 用图层合成实现）。
+
+## 色值字段多格式输入
+
+- `normalizeCssColor`：ColorField 失焦时接受任意 CSS 色值（`oklch()`/`hsl()`/`rgb()`/色名/3–8 位 hex），经 canvas 解析规范化为 hex（含 alpha 后缀）；非法输入保留原样。
+
+## 字体选择器 + Google Fonts
+
+- `model/fonts.ts`：52 项字体目录（系统字体 + 38 款 Google Fonts），`ensureFontLoaded` 按需注入 css2 样式表（全字重+斜体）。
+- Inspector 字体行改为缩略 chip → 弹层列表，每项以自身字体渲染（Paper `popup-list-item-font-preview`）；打开时预载全部目录字体，选中即提交。
+- 已有文档里的任意 fontFamily 值仍会原样渲染（未匹配项自动走 Google 加载尝试）。
+
+## ⌘G Group selection 补齐
+
+- 快捷键面板一直宣传 `⌘G / ⇧⌘G`，但只有 ⇧⌘G(ungroup) 有处理器；补 `mod+g` → `frameSelection()`（Paper ⌘G 将选中项成组为 frame）。
+- 节点右键菜单在 Frame selection 前新增 `Group selection ⌘G` 项。
+- 核对其他宣传键位（⌘⇧' 像素吸附、⌥⇧C 评论、0–9 透明度 chord、⇧⌘A 反向兄弟选择、PageUp/Down 翻页、⌥⇧⌘R/F hug/fill）均已有处理器。

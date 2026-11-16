@@ -29,7 +29,7 @@
   --color-separator: #e2e2e2;
   --color-separator-highlight: #dadada;
   --color-control: #f9f9f9;
-  --color-chip: #f6f6f6;
+  --color-chip: #f4f4f4aa;
   --color-chip-outline: #0000001f;
   --color-chip-selected: color-mix(in oklab, oklch(78% 0.12 258 / 0.5) 30%, transparent);
   --color-chip-selected-outline: color-mix(in oklab, oklch(74% 0.12 258) 50%, transparent);
@@ -44,6 +44,7 @@
   --color-gray-5: rgba(0, 0, 0, 0.1);
   --color-selection: oklch(78% 0.12 258 / 0.5);
   --color-focus: oklch(74% 0.12 258);
+  --shadow-checkbox: inset 0 1px #fffa, inset 0 0 1px 1px #fffa, 0 0.5px 1px #00000018, 0 0 1px 1px #00000018, 0 0 3px -1px #0001;
   --color-popup-outline: #0000001a;
   --color-menu: color-mix(in oklab, var(--color-panel) 92%, transparent);
   --color-menu-highlight: oklch(67% 0.17 258);
@@ -64,8 +65,8 @@
   --font-mono: _PaperMono, ui-monospace, 'SF Mono', Menlo, monospace;
   --font-weight-caption: 465;
 
-  --shadow-control: inset 0 1px #ffffff08, inset 0 0 1px 0.5px #fff1, 0 1px 0.5px #0002, 0 0 3px -1px #000b;
-  --shadow-toggle: inset 0 1px #ffffff08, inset 0 0 1px 0.5px #fff2, 0 1px 0.5px #0002, 0 0 3px -1px #000b;
+  --shadow-control: inset 0 1px #fff8, inset 0 0 1px 1px #fff8, 0 0.5px 1px #00000018, 0 0 1px #0001, 0 0 4px -1px #0001;
+  --shadow-toggle: inset 0 1px #fff8, inset 0 0 1px 1px #fff8, 0 0 1px #0001, 0 0 3px -1px #0001;
 
   font-family: var(--font-ui);
   font-size: 12px;
@@ -125,7 +126,7 @@ button {
   bottom: 0;
   width: 10px;
   z-index: 10;
-  cursor: col-resize;
+  cursor: url(/cursors/cursor-resize-col.webp) 16 16, col-resize;
 }
 .left-panel .panel-resize { right: -5px; }
 .inspector .panel-resize { left: -5px; }
@@ -568,6 +569,11 @@ button {
 
 .page-row[data-current] .page-name {
   font-weight: 500;
+}
+
+.page-row > svg {
+  flex: none;
+  color: var(--color-gray-2);
 }
 
 .page-count {
@@ -1114,6 +1120,83 @@ button {
   color: var(--color-gray-1);
 }
 
+/* Paper's superellipse chip corners (progressive enhancement). */
+@supports (corner-shape: superellipse(1.3)) {
+  .chip-field,
+  .copy-link,
+  .zoom-head,
+  .swatch {
+    corner-shape: superellipse(1.3);
+  }
+}
+
+/* Inspector top chrome: avatars + Copy link CTA. */
+.avatar-stack {
+  display: flex;
+  align-items: center;
+  margin-right: 2px;
+}
+
+.avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-panel-highlight-2);
+  color: var(--color-gray-2);
+  border: 1.5px solid var(--color-panel);
+  box-sizing: border-box;
+}
+
+.avatar-add {
+  width: 16px;
+  height: 16px;
+  margin-left: -6px;
+  align-self: flex-end;
+  background: var(--color-menu-highlight);
+  color: #fff;
+}
+
+.panel-cta {
+  padding: 2px 12px 8px;
+}
+
+.copy-link {
+  all: unset;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 24px;
+  border-radius: var(--radius-control);
+  background: var(--color-control);
+  outline: 1px solid var(--color-chip-outline);
+  outline-offset: -1px;
+  box-shadow: var(--shadow-control);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-gray-1);
+  cursor: default;
+  box-sizing: border-box;
+}
+
+.copy-link:hover {
+  background: var(--color-control-pressed, #fcfcfc);
+}
+
+.copy-link:active {
+  background: var(--color-toggle);
+}
+
+.kbd-hint {
+  font-size: 10px;
+  color: var(--color-gray-3);
+  letter-spacing: 0.5px;
+}
+
 .chip-field:focus-within {
   background: var(--color-control);
   outline: 2px solid var(--color-focus);
@@ -1363,6 +1446,8 @@ kbd {
   position: fixed;
   z-index: 80;
   min-width: 196px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
   padding: 4px 0;
   border-radius: 10px;
   background: var(--color-menu);
@@ -2150,7 +2235,7 @@ kbd {
   bottom: -5px;
   height: 9px;
   z-index: 5;
-  cursor: row-resize;
+  cursor: url(/cursors/cursor-resize-row.webp) 16 16, row-resize;
 }
 .page-divider {
   height: 5px;
@@ -2356,4 +2441,240 @@ kbd {
 }
 .hotkeys-search:focus {
   border-color: var(--accent);
+}
+
+/* Paper checkbox: 16px control tile + white check (Paper .checkbox-root). */
+input[type='checkbox'] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex: none;
+  border-radius: 4px;
+  background-color: var(--color-control);
+  box-shadow: var(--shadow-checkbox, inset 0 1px #fffa, inset 0 0 1px 1px #fffa, 0 0.5px 1px #00000018, 0 0 1px 1px #00000018, 0 0 3px -1px #0001);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  position: relative;
+  vertical-align: middle;
+}
+
+input[type='checkbox']:checked {
+  background-color: var(--color-focus);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-focus) 70%, black);
+}
+
+input[type='checkbox']:checked::after {
+  content: '';
+  width: 9px;
+  height: 9px;
+  background: #fff;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.5l2.4 2.4L9.5 4' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.5l2.4 2.4L9.5 4' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat;
+}
+
+input[type='checkbox']:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+@supports (corner-shape: superellipse(1.3)) {
+  input[type='checkbox'] {
+    corner-shape: superellipse(1.3);
+  }
+}
+
+/* Paper sliding switch (Paper .switch-root/.switch-thumb) for setting toggles. */
+input[type='checkbox'].switch {
+  width: 36px;
+  height: 16px;
+  border-radius: 100px;
+  padding: 1px;
+  background-color: transparent;
+  background-image: linear-gradient(to right, var(--color-focus) 35%, var(--color-gray-5) 65%);
+  background-position-x: 100%;
+  background-repeat: no-repeat;
+  background-size: 100px 100%;
+  box-shadow: inset 0 0 0 1px #0000000d, inset 0 1.5px 2px #0000001a;
+  transition: background-position 0.125s cubic-bezier(0.26, 0.75, 0.38, 0.45);
+  display: flex;
+}
+
+input[type='checkbox'].switch::after {
+  content: '';
+  width: 20px;
+  height: 100%;
+  flex: none;
+  background-color: #fff;
+  border-radius: 100px;
+  box-shadow: 0 0 1px 1px var(--color-gray-5), 0 1px 1px var(--color-gray-5), 1px 2px 4px -1px var(--color-gray-5);
+  transition: translate 0.15s ease;
+}
+
+input[type='checkbox'].switch:checked {
+  background-position-x: 0%;
+  box-shadow: none;
+}
+
+input[type='checkbox'].switch:checked::after {
+  translate: calc(34px - 100%);
+}
+
+@supports (corner-shape: superellipse(1.3)) {
+  input[type='checkbox'].switch {
+    corner-shape: inherit;
+  }
+}
+
+/* Shader picker: thumbnail chip + grid popup (official shader previews). */
+.popup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 79;
+}
+
+button.chip-field.shader-pick {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: var(--radius-control);
+  background: var(--color-control);
+  box-shadow: var(--shadow-control);
+  font-size: 11px;
+  color: var(--color-gray-1);
+  cursor: default;
+  width: 100%;
+}
+
+.shader-pick-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  object-fit: cover;
+  flex: none;
+}
+
+.shader-pick-name {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shader-pick svg {
+  color: var(--color-gray-3);
+  flex: none;
+}
+
+.shader-grid {
+  z-index: 80;
+  width: 236px;
+  padding: 4px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  max-height: 316px;
+}
+
+.shader-thumb {
+  all: unset;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 2px 5px;
+  border-radius: 6px;
+  font-size: 9px;
+  line-height: 11px;
+  color: var(--color-gray-2);
+  text-align: center;
+  cursor: default;
+}
+
+.shader-thumb img {
+  width: 64px;
+  height: 40px;
+  border-radius: 4px;
+  object-fit: cover;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12);
+}
+
+.shader-thumb:hover {
+  background: rgba(0, 0, 0, 0.045);
+}
+
+.shader-thumb[data-active='true'] {
+  background: color-mix(in oklab, var(--color-focus) 16%, transparent);
+  box-shadow: inset 0 0 0 1px var(--color-focus);
+  color: var(--color-gray-1);
+}
+
+/* ---------------------------------------------------------- font picker */
+
+button.chip-field.font-pick {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: var(--radius-control);
+  background: var(--color-control);
+  box-shadow: var(--shadow-control);
+  font-size: 11px;
+  color: var(--color-gray-1);
+  cursor: default;
+  width: 100%;
+}
+
+.font-pick-name {
+  flex: 1;
+  text-align: left;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.font-pick svg {
+  color: var(--color-gray-3);
+  flex: none;
+}
+
+.font-list {
+  width: 240px;
+  max-height: 332px;
+  padding: 4px;
+}
+
+.font-list .popup-list-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  font-size: 14px;
+  color: var(--color-gray-1);
+  text-align: left;
+  cursor: default;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.font-list .popup-list-item:hover,
+.font-list .popup-list-item[data-active='true'] {
+  background: var(--color-panel-highlight-1, rgba(0, 0, 0, 0.06));
 }

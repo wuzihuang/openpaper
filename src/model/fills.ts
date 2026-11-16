@@ -1,5 +1,5 @@
 import type { DocNode, Fill, GradientStop } from './types'
-import { SHADER_PRESETS as WEBGL_SHADER_PRESETS } from './shaders'
+import { SHADERS, presetFill } from './shaders'
 
 export function defaultStops(): GradientStop[] {
   return [
@@ -31,12 +31,17 @@ export function fillsOf(node: DocNode): Fill[] {
   return []
 }
 
+/** Fold a per-fill opacity into a CSS color (SVG export uses fill-opacity instead). */
+function withAlpha(color: string, opacity: number): string {
+  return opacity >= 1 ? color : `color-mix(in srgb, ${color} ${round(opacity * 100)}%, transparent)`
+}
+
 /** CSS `<color-hint>` interpolation hint between two stops, matching Paper's midpoint. */
-function stopSequence(stops: GradientStop[]): string {
+function stopSequence(stops: GradientStop[], opacity = 1): string {
   const parts: string[] = []
   for (let i = 0; i < stops.length; i++) {
     const stop = stops[i]
-    parts.push(`${stop.color} ${round(stop.position * 100)}%`)
+    parts.push(`${withAlpha(stop.color, opacity)} ${round(stop.position * 100)}%`)
     const next = stops[i + 1]
     if (next && stop.midpoint !== 0.5) {
       const hint = stop.position + (next.position - stop.position) * stop.midpoint
@@ -60,9 +65,10 @@ function interpolationCss(fill: Fill): string {
 
 export function fillToCss(fill: Fill): string | null {
   if (!fill.isVisible) return null
-  if (fill.type === 'solid') return `linear-gradient(${fill.color ?? '#dddddd'} 0 0)`
+  const opacity = fill.opacity ?? 1
+  if (fill.type === 'solid') return `linear-gradient(${withAlpha(fill.color ?? '#dddddd', opacity)} 0 0)`
   if (fill.type === 'gradient') {
-    const stops = stopSequence(fill.stops ?? [])
+    const stops = stopSequence(fill.stops ?? [], opacity)
     const shape = fill.shape ?? 'linear'
     const interp = interpolationCss(fill)
     if (shape === 'linear') return `linear-gradient(${fill.angle ?? 180}deg${interp}, ${stops})`
@@ -89,7 +95,7 @@ const noiseSvg = (color: string) =>
 
 /** Paper shader approximations: tiling pattern fills rendered via CSS backgrounds. */
 function patternCss(fill: Fill): string {
-  const c = fill.color ?? '#000000'
+  const c = withAlpha(fill.color ?? '#000000', fill.opacity ?? 1)
   const s = Math.max(4, fill.patternSize ?? 12)
   switch (fill.pattern ?? 'dot-grid') {
     case 'lines':
@@ -111,39 +117,27 @@ export function imageFill(imageSrc: string, imageFit: Fill['imageFit'] = 'fill')
   return { type: 'image', imageSrc, imageFit, isVisible: true }
 }
 
-/** Shader menu presets: real WebGL shader fills (GLSL in model/shaders.ts) plus
- * CSS pattern fills kept as lightweight tiling options. */
+/** Shader menu presets: one entry per official @paper-design shader (its
+ * default preset) plus CSS pattern fills kept as lightweight tiling options. */
 export const SHADER_PRESETS: { name: string; base?: string; fills: Fill[] }[] = [
-  ...WEBGL_SHADER_PRESETS.map((p) => ({
-    name: p.name,
-    fills: [
-      {
-        type: 'shader',
-        shaderKind: p.kind,
-        shaderColors: p.colors,
-        shaderBack: p.back,
-        shaderParams: p.params,
-        isVisible: true,
-      } satisfies Fill,
-    ],
-  })),
+  ...SHADERS.map((d) => ({ name: d.name, fills: [presetFill(d, d.presets[0])] })),
   {
-    name: 'Dot grid',
+    name: 'Dot grid (pattern)',
     base: '#f8fafc',
     fills: [{ type: 'pattern', pattern: 'dot-grid', color: '#94a3b8', patternSize: 14, isVisible: true }],
   },
   {
-    name: 'Halftone',
+    name: 'Halftone (pattern)',
     base: '#111827',
     fills: [{ type: 'pattern', pattern: 'halftone', color: '#e5e7eb', patternSize: 10, isVisible: true }],
   },
   {
-    name: 'Stripes',
+    name: 'Stripes (pattern)',
     base: '#ffffff',
     fills: [{ type: 'pattern', pattern: 'lines', color: '#cbd5e1', patternSize: 12, isVisible: true }],
   },
   {
-    name: 'Noise',
+    name: 'Noise (pattern)',
     base: '#1e293b',
     fills: [{ type: 'pattern', pattern: 'noise', color: '#64748b', isVisible: true }],
   },

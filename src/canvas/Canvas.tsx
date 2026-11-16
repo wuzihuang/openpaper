@@ -103,6 +103,7 @@ import { measureDocument, measureMap } from './measure'
 import { hitTest, topLevelChild } from './hitTest'
 import { computeSnap } from './snap'
 import { cameraMatrix, zoomAtPoint } from './camera'
+import { ensureFontLoaded } from '../model/fonts'
 import { DocumentTree } from './NodeView'
 import { Hud } from './Hud'
 import { closestOnPath, vectorPathD } from '../model/vector'
@@ -136,7 +137,15 @@ const CURSOR_ARROW = 'url(/cursors/cursor-arrow.webp) 4 3, default'
 const CURSOR_GRAB = 'url(/cursors/cursor-hand-open.webp) 16 16, grab'
 const CURSOR_GRABBING = 'url(/cursors/cursor-hand-closed.webp) 16 16, grabbing'
 const CURSOR_MOVE = 'url(/cursors/cursor-move.webp) 16 16, move'
-const CURSOR_CROSS = 'crosshair'
+const CURSOR_CROSS = 'url(/cursors/cursor-crosshair.webp) 16 16, crosshair'
+const CURSOR_PEN = 'url(/cursors/cursor-pen.webp) 3 2, crosshair'
+const CURSOR_TEXT = 'url(/cursors/cursor-crosshair-text.webp) 16 16, crosshair'
+const CURSOR_COMMENT = 'url(/cursors/cursor-comment.webp) 4 3, crosshair'
+const CURSOR_ZOOM_IN = 'url(/cursors/cursor-zoom-in.webp) 16 16, zoom-in'
+const CURSOR_ZOOM_OUT = 'url(/cursors/cursor-zoom-out.webp) 16 16, zoom-out'
+const CURSOR_DUPLICATE = 'url(/cursors/cursor-arrow-duplicate.webp) 4 3, default'
+const CURSOR_ARROW_X = 'url(/cursors/cursor-arrow-x.webp) 4 3, default'
+const CURSOR_ARROW_Y = 'url(/cursors/cursor-arrow-y.webp) 4 3, default'
 
 type DrawTool = 'frame' | 'rect' | 'ellipse' | 'text'
 
@@ -252,6 +261,12 @@ export function Canvas() {
   const pen = useEditor((s) => s.ui.pen)
   const pathEdit = useEditor((s) => s.ui.pathEdit)
   const selection = useEditor((s) => s.ui.selection)
+
+  // Lazy-load every Google font used by text nodes so saved docs render their
+  // typography on reopen (not only after touching the inspector's font picker).
+  useEffect(() => {
+    for (const n of Object.values(doc.nodes)) if (n.kind === 'text' && n.fontFamily) ensureFontLoaded(n.fontFamily)
+  }, [doc])
   const measure = useEditor((s) => s.ui.measure)
   const commentsVisible = useEditor((s) => s.ui.commentsVisible)
   const pixelGrid = useEditor((s) => s.ui.pixelGrid)
@@ -622,6 +637,12 @@ export function Canvas() {
       }
       // Paper ⌘⌥G wrap in frame
       if (mod && event.altKey && key === 'g') {
+        event.preventDefault()
+        frameSelection()
+        return
+      }
+      // Paper ⌘G group selection into a frame
+      if (mod && !event.altKey && !event.shiftKey && key === 'g') {
         event.preventDefault()
         frameSelection()
         return
@@ -1157,6 +1178,20 @@ export function Canvas() {
     if (!drag) {
       if (state.ui.tool === 'pen') setPenHover(world)
       const drawing = state.ui.tool === 'frame' || state.ui.tool === 'rect' || state.ui.tool === 'ellipse' || state.ui.tool === 'text'
+      const toolCursor =
+        state.ui.tool === 'pen'
+          ? CURSOR_PEN
+          : state.ui.tool === 'text'
+            ? CURSOR_TEXT
+            : state.ui.tool === 'comment'
+              ? CURSOR_COMMENT
+              : state.ui.tool === 'zoom'
+                ? event.altKey
+                  ? CURSOR_ZOOM_OUT
+                  : CURSOR_ZOOM_IN
+                : drawing
+                  ? CURSOR_CROSS
+                  : null
       const hit = drawing ? null : hitTest(state.doc, state.ui.pageId, world.x, world.y)
       const hover = hit ? (event.metaKey ? hit : topLevelChild(state.doc, hit)) : null
       if (hover !== state.ui.hoverId) setUI({ hoverId: hover })
@@ -1164,13 +1199,14 @@ export function Canvas() {
       root.style.cursor =
         state.ui.spaceDown || state.ui.tool === 'hand'
           ? CURSOR_GRAB
-          : drawing
-            ? CURSOR_CROSS
-            : handle !== null
+          : toolCursor ??
+            (handle !== null
               ? CURSORS[handle]
               : rotateAt(local)
                 ? CURSOR_MOVE
-                : CURSOR_ARROW
+                : event.altKey && (state.ui.hoverId || state.ui.selection.length > 0)
+                  ? CURSOR_DUPLICATE
+                  : CURSOR_ARROW)
       return
     }
 
@@ -1303,6 +1339,7 @@ export function Canvas() {
       const axis = event.shiftKey ? (Math.abs(dx) > Math.abs(dy) ? 'x' : 'y') : null
       if (axis === 'x') dy = 0
       if (axis === 'y') dx = 0
+      root.style.cursor = event.altKey ? CURSOR_DUPLICATE : axis === 'x' ? CURSOR_ARROW_X : axis === 'y' ? CURSOR_ARROW_Y : CURSOR_MOVE
       const movingIds = new Set(drag.ids)
       const box: Rect = { ...drag.box, x: drag.box.x + dx, y: drag.box.y + dy }
       const snap = computeSnap(state.doc, state.ui.pageId, movingIds, box, 4 / state.camera.scale)

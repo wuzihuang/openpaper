@@ -48,14 +48,15 @@ function svgGradient(fill: Fill, id: string) {
   )
 }
 
-function primaryPaint(node: DocNode): { paint?: string; defs?: import('react').ReactNode } {
+function primaryPaint(node: DocNode): { paint?: string; defs?: import('react').ReactNode; fillOpacity?: number } {
   const fills = node.fills?.filter((f) => f.isVisible) ?? []
   const top = fills[0] ?? (node.fill !== undefined ? { type: 'solid' as const, color: node.fill, isVisible: true } : undefined)
   if (!top) return {}
-  if (top.type === 'solid') return { paint: top.color ?? '#dddddd' }
+  const fillOpacity = 'opacity' in top && top.opacity !== undefined && top.opacity < 1 ? top.opacity : undefined
+  if (top.type === 'solid') return { paint: top.color ?? '#dddddd', fillOpacity }
   if (top.type === 'gradient') {
     const gid = `grad-${node.id}`
-    return { paint: `url(#${gid})`, defs: svgGradient(top, gid) }
+    return { paint: `url(#${gid})`, defs: svgGradient(top, gid), fillOpacity }
   }
   return { paint: 'none' }
 }
@@ -285,12 +286,12 @@ export function NodeView({ node, doc, isArtboard, readOnly, flowDir }: NodeViewP
 
   if (node.kind === 'vector') {
     const d = vectorPathD(node.points ?? [], node.closed !== false)
-    const { paint, defs } = primaryPaint(node)
+    const { paint, defs, fillOpacity } = primaryPaint(node)
     return (
       <div {...common} className="node node-vector" style={{ ...style, background: 'none', border: 'none', boxShadow: 'none', overflow: 'visible' }}>
         <svg width="100%" height="100%" viewBox={`0 0 ${node.width} ${node.height}`} preserveAspectRatio="none" style={{ display: 'block', overflow: 'visible' }}>
           {defs && <defs>{defs}</defs>}
-          <path d={d} fill={paint ?? 'none'} stroke={node.stroke} strokeWidth={node.strokeWidth ?? 1} strokeDasharray={node.strokeDash?.length ? node.strokeDash.join(' ') : undefined} strokeDashoffset={node.strokeDashOffset || undefined} strokeLinecap={node.strokeCap === 'butt' || !node.strokeCap ? undefined : node.strokeCap} strokeLinejoin={node.strokeJoin === 'miter' || !node.strokeJoin ? undefined : node.strokeJoin} vectorEffect="non-scaling-stroke" />
+          <path d={d} fill={paint ?? 'none'} fillOpacity={fillOpacity} stroke={node.stroke} strokeWidth={node.strokeWidth ?? 1} strokeDasharray={node.strokeDash?.length ? node.strokeDash.join(' ') : undefined} strokeDashoffset={node.strokeDashOffset || undefined} strokeLinecap={node.strokeCap === 'butt' || !node.strokeCap ? undefined : node.strokeCap} strokeLinejoin={node.strokeJoin === 'miter' || !node.strokeJoin ? undefined : node.strokeJoin} vectorEffect="non-scaling-stroke" />
         </svg>
       </div>
     )

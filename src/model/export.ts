@@ -1,5 +1,6 @@
 import type { Doc, DocNode, Rect } from './types'
 import { fillsOf, fillsToCss, fillsBlendMode, filterToCss, svgStops } from './fills'
+import { embeddedFontCss, googleFontsUrl } from './fonts'
 
 function shadowToCss(shadow: NonNullable<DocNode['shadow']>): string {
   return `${shadow.inset ? 'inset ' : ''}${shadow.x}px ${shadow.y}px ${shadow.blur}px ${shadow.spread ?? 0}px ${shadow.color}`
@@ -97,6 +98,13 @@ function makeSvg(ids: string[], docOverride?: Doc) {
     return `url(#${id})`
   }
 
+  /** Per-fill opacity on the top fill → SVG `fill-opacity` attribute. */
+  const fillOpacityAttr = (node: DocNode): string => {
+    const top = fillsOf(node).filter((fill) => fill.isVisible)[0]
+    const o = top?.opacity
+    return o !== undefined && o < 1 ? ` fill-opacity="${o}"` : ''
+  }
+
   const nodes = { ...doc.nodes }
   for (const inst of Object.values(nodes)) {
     if (inst.kind !== 'instance' || !inst.overrides) continue
@@ -112,6 +120,7 @@ function makeSvg(ids: string[], docOverride?: Doc) {
     const x = rect.x - bounds.x
     const y = rect.y - bounds.y
     const { stroke, shadow } = paint(node)
+    const fillOpacity = fillOpacityAttr(node)
     const opacity = node.opacity !== undefined && node.opacity !== 1 ? ` opacity="${node.opacity}"` : ''
     const blend = node.blendMode && node.blendMode !== 'normal' ? ` style="mix-blend-mode:${escapeXml(node.blendMode)}"` : ''
     let clip = ''
@@ -122,11 +131,11 @@ function makeSvg(ids: string[], docOverride?: Doc) {
     }
     let content = ''
     if (node.kind === 'ellipse') {
-      content = `<ellipse cx="${x + rect.width / 2}" cy="${y + rect.height / 2}" rx="${rect.width / 2}" ry="${rect.height / 2}" fill="${escapeXml(fillAttr(node))}"${stroke}${shadow}/>`
+      content = `<ellipse cx="${x + rect.width / 2}" cy="${y + rect.height / 2}" rx="${rect.width / 2}" ry="${rect.height / 2}" fill="${escapeXml(fillAttr(node))}"${fillOpacity}${stroke}${shadow}/>`
     } else if (node.kind === 'vector') {
       const d = vectorPathD(node.points ?? [], node.closed !== false)
       // Points are stored in node-local coordinates; translate to export origin.
-      content = `<g transform="translate(${x} ${y})"><path d="${escapeXml(d)}" fill="${escapeXml(fillAttr(node))}"${stroke}${shadow}/></g>`
+      content = `<g transform="translate(${x} ${y})"><path d="${escapeXml(d)}" fill="${escapeXml(fillAttr(node))}"${fillOpacity}${stroke}${shadow}/></g>`
     } else if (node.kind === 'text') {
       const fontSize = node.fontSize ?? 14
       const lineHeight = node.lineHeight ?? 1.4
@@ -137,7 +146,7 @@ function makeSvg(ids: string[], docOverride?: Doc) {
       const spans = lines.map((line, index) => `<tspan x="${textX}" y="${y + fontSize + index * fontSize * lineHeight}">${escapeXml(line)}</tspan>`).join('')
       content = `<text fill="${escapeXml(node.color ?? '#111111')}" font-family="${escapeXml(node.fontFamily ?? 'Inter')}" font-size="${fontSize}" font-weight="${node.fontWeight ?? 400}" letter-spacing="${node.letterSpacing ?? 0}" text-anchor="${anchor}"${shadow}>${spans}</text>`
     } else {
-      content = `<rect x="${x}" y="${y}" width="${rect.width}" height="${rect.height}" rx="${node.radius ?? 0}" fill="${escapeXml(fillAttr(node))}"${stroke}${shadow}/>`
+      content = `<rect x="${x}" y="${y}" width="${rect.width}" height="${rect.height}" rx="${node.radius ?? 0}" fill="${escapeXml(fillAttr(node))}"${fillOpacity}${stroke}${shadow}/>`
       if (node.kind === 'image' && node.imageSrc) {
         const fit = node.imageFit === 'cover' ? 'xMidYMid slice' : node.imageFit === 'contain' ? 'xMidYMid meet' : 'none'
         content += `<image href="${escapeXml(node.imageSrc)}" x="${x}" y="${y}" width="${rect.width}" height="${rect.height}" preserveAspectRatio="${fit}"${clip}/>`
@@ -150,7 +159,23 @@ function makeSvg(ids: string[], docOverride?: Doc) {
 
   const body = ids.map(render).join('')
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.ceil(bounds.width)}" height="${Math.ceil(bounds.height)}" viewBox="0 0 ${bounds.width} ${bounds.height}"><defs>${defs.join('')}</defs>${body}</svg>`
-  return { svg, bounds }
+  const fonts = new Set<string>()
+  const walkFonts = (id: string) => {
+    const n = nodes[id]
+    if (!n) return
+    if (n.kind === 'text' && n.fontFamily) fonts.add(n.fontFamily)
+    n.children?.forEach(walkFonts)
+  }
+  ids.forEach(walkFonts)
+  return { svg, bounds, fontFamilies: [...fonts] }
+}
+
+/** Inline a Google Fonts stylesheet into exported SVG markup. `@import` works
+ * in standalone .svg files and inline-pasted SVGs; <img>-rasterized paths need
+ * embeddedFontCss (handled inside rasterizeSvg). */
+function svgWithFontImport(svg: string, fontFamilies?: string[]): string {
+  const url = googleFontsUrl(fontFamilies ?? [])
+  return url ? svg.replace(/<svg[^>]*>/, (open) => `${open}<style>@import url("${escapeXml(url)}")</style>`) : svg
 }
 
 /** Renders a file card thumbnail (Paper FileThumbnail): first page's artboards as SVG. */
@@ -335,7 +360,15 @@ const tw = (cls: (string | false | null | undefined)[]) => cls.filter(Boolean).j
 function nodeToTailwind(doc: { nodes: Record<string, DocNode> }, id: string, root = false): string {
   const node = doc.nodes[id]
   if (!node) return ''
-  const solid = fillsOf(node).find((f) => f.isVisible && f.type === 'solid')?.color ?? (fillsOf(node).length === 0 ? node.fill : undefined)
+  const solidFill = fillsOf(node).find((f) => f.isVisible && f.type === 'solid')
+  const solidColor = solidFill?.color ?? (fillsOf(node).length === 0 ? node.fill : undefined)
+  const solidOpacity = solidFill?.opacity ?? 1
+  const solid =
+    solidColor && solidOpacity < 1
+      ? /^#[0-9a-fA-F]{6}$/.test(solidColor)
+        ? `${solidColor}${Math.round(solidOpacity * 255).toString(16).padStart(2, '0')}`
+        : `color-mix(in_srgb,${solidColor}_${Math.round(solidOpacity * 100)}%,transparent)`
+      : solidColor
   const cls = tw([
     root ? 'relative' : 'absolute',
     !root && `left-[${node.x}px]`,
@@ -391,7 +424,7 @@ export function downloadSelectionSvg() {
     showToast('Select a layer to export')
     return false
   }
-  download(new Blob([result.svg], { type: 'image/svg+xml;charset=utf-8' }), filename('svg'))
+  download(new Blob([svgWithFontImport(result.svg, result.fontFamilies)], { type: 'image/svg+xml;charset=utf-8' }), filename('svg'))
   showToast('SVG exported')
   return true
 }
@@ -403,14 +436,16 @@ export async function copySelectionAsSvg() {
     showToast('Select a layer to export')
     return false
   }
-  await copyText(result.svg)
+  await copyText(svgWithFontImport(result.svg, result.fontFamilies))
   showToast('SVG copied')
   return true
 }
 
 type RasterFormat = 'png' | 'jpg' | 'webp'
 
-function rasterizeSvg(svg: string, w: number, h: number, format: RasterFormat, quality: number, resampling?: 'smooth' | 'pixelated'): Promise<Blob | null> {
+async function rasterizeSvg(svg: string, w: number, h: number, format: RasterFormat, quality: number, resampling?: 'smooth' | 'pixelated', fontFamilies?: string[]): Promise<Blob | null> {
+  const fontCss = await embeddedFontCss(fontFamilies)
+  if (fontCss) svg = svg.replace(/<svg[^>]*>/, (open) => `${open}<style>${fontCss}</style>`)
   return new Promise((resolve) => {
     const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }))
     const image = new Image()
@@ -447,7 +482,7 @@ function rasterizeSvg(svg: string, w: number, h: number, format: RasterFormat, q
 function renderRaster(scale: number, format: RasterFormat, quality = 1): Promise<Blob | null> {
   const result = makeSvg(exportIds())
   if (!result) return Promise.resolve(null)
-  return rasterizeSvg(result.svg, result.bounds.width * scale, result.bounds.height * scale, format, quality)
+  return rasterizeSvg(result.svg, result.bounds.width * scale, result.bounds.height * scale, format, quality, undefined, result.fontFamilies)
 }
 
 export async function downloadSelectionPng(scale = 2) {
@@ -533,10 +568,10 @@ export async function exportNodeEntries(nodeId: string) {
     const w = Math.max(1, Math.ceil(result.bounds.width * entry.scale))
     const h = Math.max(1, Math.ceil(result.bounds.height * entry.scale))
     if (entry.format === 'pdf') {
-      const blob = await rasterizeSvg(result.svg, w, h, 'jpg', entry.quality ?? 0.92, entry.resampling)
+      const blob = await rasterizeSvg(result.svg, w, h, 'jpg', entry.quality ?? 0.92, entry.resampling, result.fontFamilies)
       if (blob) download(buildPdfFromJpeg(new Uint8Array(await blob.arrayBuffer()), w, h), `${base}${suffix}.pdf`)
     } else {
-      const blob = await rasterizeSvg(result.svg, w, h, entry.format, entry.quality ?? 0.92, entry.resampling)
+      const blob = await rasterizeSvg(result.svg, w, h, entry.format, entry.quality ?? 0.92, entry.resampling, result.fontFamilies)
       if (blob) download(blob, `${base}${suffix}.${entry.format === 'jpg' ? 'jpg' : entry.format}`)
     }
   }
@@ -579,7 +614,7 @@ export async function exportCombinedPdf(scale = 2) {
     if (!result) continue
     const w = Math.max(1, Math.ceil(result.bounds.width * scale))
     const h = Math.max(1, Math.ceil(result.bounds.height * scale))
-    const blob = await rasterizeSvg(result.svg, w, h, 'jpg', 0.92)
+    const blob = await rasterizeSvg(result.svg, w, h, 'jpg', 0.92, undefined, result.fontFamilies)
     if (blob) pages.push({ jpeg: new Uint8Array(await blob.arrayBuffer()), w, h })
   }
   if (pages.length === 0) {
@@ -660,7 +695,7 @@ export async function copySelectionAsPng() {
  * canvas.captureStream + MediaRecorder (animated shader fills only). */
 export async function downloadShaderVideo(nodeId: string, seconds = 3) {
   const host = document.querySelector(`[data-node-id="${nodeId}"]`)
-  const canvas = host?.querySelector('canvas.shader-fill') as HTMLCanvasElement | null
+  const canvas = host?.querySelector('.shader-fill canvas, canvas.shader-fill') as HTMLCanvasElement | null
   if (!canvas || !('captureStream' in canvas) || typeof MediaRecorder === 'undefined') {
     showToast('Video export needs an animated shader fill')
     return

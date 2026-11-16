@@ -424,6 +424,7 @@ function PagesSection({ pageId, renamingPageId, doc }: { pageId: string; renamin
                 ) : (
                   <span className="page-name">{item.name}</span>
                 )}
+                {item.id === pageId && <Icon name="check" size={11} />}
               </div>
             ),
           )}

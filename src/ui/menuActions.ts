@@ -85,6 +85,7 @@ export function openNodeMenu(clientX: number, clientY: number, nodeId: string) {
     { type: 'item', label: 'Select inverse', onSelect: selectInverse },
     { type: 'item', label: 'Select all', hotkey: '⌘A', onSelect: selectAll },
     SEP,
+    { type: 'item', label: 'Group selection', hotkey: '⌘G', disabled: count < 1, onSelect: () => frameSelection() },
     { type: 'item', label: 'Frame selection', hotkey: '⇧F', onSelect: frameSelection },
     { type: 'item', label: 'Wrap in flex', disabled: count < 2, onSelect: wrapInFlex },
     { type: 'item', label: 'Ungroup', hotkey: '⇧⌘G', disabled: node.kind !== 'frame' || node.parentId === null, onSelect: ungroupSelection },

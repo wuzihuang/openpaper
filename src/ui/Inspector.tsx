@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import type { DocNode, ExportEntry, Fill, FlexLayout, GradientShape, LayoutGuide, NodeFilter, SizingMode } from '../model/types'
 import { defaultStops, fillsOf, fillToCss, gradientFill, imageFill, solidFill } from '../model/fills'
-import { SHADERS, shaderDef } from '../model/shaders'
+import { SHADERS, presetFill, presetMatch, shaderDef } from '../model/shaders'
 import { chooseImage, deleteComment, moveNodes, replyToComment, scaleSelection, selectionBounds, updateComment, updateNode, useEditor } from '../model/store'
 import { focusComment } from '../model/store'
 import { copySelectionAsPng, downloadSelectionPdf, downloadSelectionRaster, downloadSelectionSvg, downloadShaderVideo, exportCombinedPdf, exportNodeEntries } from '../model/export'
 import { countPageNodes, pageArtboards } from '../model/doc'
 import { openColorFormatMenu, openZoomMenu } from './menuActions'
-import { openMenu } from './menuStore'
 import { copyProjectLink } from '../model/navigation'
+import { normalizeCssColor } from '../model/color'
+import { FONT_FAMILIES, ensureAllFontsLoaded, ensureFontLoaded } from '../model/fonts'
 import { Icon } from './Icon'
 import { PanelResize } from './PanelResize'
 
@@ -32,9 +33,39 @@ function NumberField({
   useEffect(() => {
     setDraft(format(value))
   }, [value, decimals])
+  // Paper scrub: drag the field label sideways to scrub the number.
+  const scrubRef = useRef<{ x: number; start: number; value: number } | null>(null)
+  const onScrubDown = (event: React.PointerEvent) => {
+    if (disabled) return
+    event.preventDefault()
+    scrubRef.current = { x: event.clientX, start: event.clientX, value }
+    const el = event.currentTarget as HTMLElement
+    el.setPointerCapture(event.pointerId)
+    const onMove = (e: PointerEvent) => {
+      const s = scrubRef.current
+      if (!s) return
+      const step = e.shiftKey ? 10 : 1
+      const next = s.value + (e.clientX - s.x) * step * (decimals > 0 ? 0.1 : 1)
+      s.x = e.clientX
+      s.value = next
+      setDraft(format(next))
+    }
+    const onUp = (e: PointerEvent) => {
+      const s = scrubRef.current
+      scrubRef.current = null
+      el.removeEventListener('pointermove', onMove)
+      el.removeEventListener('pointerup', onUp)
+      if (s && Math.abs(e.clientX - s.start) > 2) onCommit(decimals > 0 ? Math.round(s.value * 10 ** decimals) / 10 ** decimals : Math.round(s.value))
+      else setDraft(format(value))
+    }
+    el.addEventListener('pointermove', onMove)
+    el.addEventListener('pointerup', onUp)
+  }
   return (
     <label className="chip-field">
-      <span className="chip-label">{label}</span>
+      <span className="chip-label" onPointerDown={onScrubDown} style={{ cursor: 'url(/cursors/cursor-scrubbing.webp) 16 16, ew-resize' }}>
+        {label}
+      </span>
       <input
         className="chip-input"
         value={disabled ? '' : draft}
@@ -44,7 +75,7 @@ function NumberField({
         onBlur={() => {
           if (disabled) return
           const parsed = Number.parseFloat(draft)
-          if (Number.isFinite(parsed)) onCommit(parsed)
+          if (Number.isFinite(parsed) && parsed !== value) onCommit(parsed)
           else setDraft(format(value))
         }}
         onKeyDown={(event) => {
@@ -106,9 +137,62 @@ function ColorField({
         className="chip-input mono"
         value={value}
         onChange={(event) => onCommit(event.target.value)}
+        onBlur={(event) => {
+          const normalized = normalizeCssColor(event.target.value)
+          if (normalized && normalized !== value) onCommit(normalized)
+        }}
         spellCheck={false}
       />
     </label>
+  )
+}
+
+/** Paper font picker: chip opens a popup list whose items render in their own
+ * font (Google fonts lazy-loaded via fonts.ts). */
+function FontField({ value, onCommit }: { value: string; onCommit: (family: string) => void }) {
+  const [rect, setRect] = useState<DOMRect | null>(null)
+  useEffect(() => {
+    ensureFontLoaded(value)
+  }, [value])
+  return (
+    <>
+      <button
+        className="chip-field wide font-pick"
+        onClick={(event) => {
+          ensureAllFontsLoaded()
+          setRect((event.currentTarget as HTMLElement).getBoundingClientRect())
+        }}
+      >
+        <span className="chip-label">Font</span>
+        <span className="font-pick-name" style={{ fontFamily: value }}>{value}</span>
+        <Icon name="chevron-down" size={10} />
+      </button>
+      {rect && (
+        <>
+          <div className="popup-overlay" onPointerDown={() => setRect(null)} />
+          <div
+            className="menu-popup font-list"
+            style={{ left: Math.max(8, rect.right - 240), top: Math.min(window.innerHeight - 340, rect.bottom + 4) }}
+          >
+            {FONT_FAMILIES.map(({ family }) => (
+              <button
+                key={family}
+                className="popup-list-item"
+                data-active={family === value}
+                style={{ fontFamily: family }}
+                onClick={() => {
+                  ensureFontLoaded(family)
+                  onCommit(family)
+                  setRect(null)
+                }}
+              >
+                {family}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </>
   )
 }
 
@@ -635,20 +719,22 @@ function pickFillImage(onPick: (src: string) => void) {
 }
 
 function FillRow({ fill, index, onPatch }: { fill: Fill; index: number; onPatch: (index: number, patch: Partial<Fill>) => void }) {
-  const typeValue = fill.type === 'gradient' ? (fill.shape ?? 'linear') : fill.type
   const patchFill = (p: Partial<Fill>) => onPatch(index, p)
   const setType = (v: string) => {
     if (v === 'solid') patchFill({ type: 'solid', color: fill.color ?? '#dddddd' })
     else if (v === 'image') patchFill({ ...imageFill(fill.imageSrc ?? '', fill.imageFit ?? 'fill') })
     else if (v === 'pattern') patchFill({ type: 'pattern', pattern: fill.pattern ?? 'dot-grid', color: fill.color ?? '#000000', patternSize: fill.patternSize ?? 12 })
-    else if (v === 'shader') patchFill({ type: 'shader', shaderKind: fill.shaderKind ?? 'mesh-gradient', shaderColors: fill.shaderColors ?? ['#ff7a18', '#509bf5', '#af2896'], shaderBack: fill.shaderBack })
+    else if (v === 'shader') {
+      const d = shaderDef(fill.shaderKind) ?? SHADERS[0]
+      patchFill(presetFill(d, d.presets[0]))
+    }
     else patchFill({ ...gradientFill(v as GradientShape), stops: fill.stops ?? defaultStops() })
   }
   return (
     <>
       <SelectField
         label={index === 0 ? 'Fill' : `Fill ${index + 1}`}
-        value={typeValue}
+        value={fill.type === 'gradient' ? (fill.shape ?? 'linear') : fill.type}
         options={[
           ['solid', 'Solid'],
           ['linear', 'Linear gradient'],
@@ -659,6 +745,11 @@ function FillRow({ fill, index, onPatch }: { fill: Fill; index: number; onPatch:
           ['shader', 'Shader'],
         ]}
         onChange={setType}
+      />
+      <NumberField
+        label="Opacity"
+        value={Math.round((fill.opacity ?? 1) * 100)}
+        onCommit={(v) => patchFill({ opacity: Math.min(1, Math.max(0, v / 100)) })}
       />
       {fill.type === 'shader' && <ShaderFillEditor fill={fill} patchFill={patchFill} />}
       {fill.type === 'pattern' && (
@@ -754,51 +845,160 @@ function FillRow({ fill, index, onPatch }: { fill: Fill; index: number; onPatch:
   )
 }
 
-/** WebGL shader fill editor — palette + shader params (model/shaders.ts). */
+/** Official Paper shader fill editor — palette + per-shader params
+ * (model/shaders.ts registry over @paper-design/shaders-react). */
 function ShaderFillEditor({ fill, patchFill }: { fill: Fill; patchFill: (p: Partial<Fill>) => void }) {
-  const def = shaderDef(fill.shaderKind)
+  const def = shaderDef(fill.shaderKind) ?? SHADERS[0]
   const colors = fill.shaderColors ?? []
   const setColor = (i: number, c: string) => patchFill({ shaderColors: colors.map((v, j) => (j === i ? c : v)) })
+  const paramDefault = (key: string) => {
+    const v = def.defaults[key]
+    return typeof v === 'number' ? v : 0
+  }
+  const numValue = (key: string, fallback: number) => fill.shaderParams?.[key] ?? fallback
+  const [pickOpen, setPickOpen] = useState<DOMRect | null>(null)
   return (
     <>
-      <SelectField
-        label="Shader"
-        value={fill.shaderKind ?? 'mesh-gradient'}
-        options={SHADERS.map((s) => [s.id, s.name] as [string, string])}
-        onChange={(v) => patchFill({ shaderKind: v })}
-      />
-      {colors.map((c, i) => (
-        <div key={i} className="row-align">
-          <ColorField label={`Color ${i + 1}`} value={c} fallback="#888888" onCommit={(v) => setColor(i, v)} />
-          <button
-            className="inspector-action"
-            disabled={colors.length <= 1}
-            onClick={() => patchFill({ shaderColors: colors.filter((_, j) => j !== i) })}
-            data-tooltip="Remove color"
+      <button
+        className="chip-field shader-pick"
+        onClick={(e) => setPickOpen((e.currentTarget as HTMLElement).getBoundingClientRect())}
+      >
+        <span className="chip-label">Shader</span>
+        <img className="shader-pick-thumb" src={`/shader-thumbs/${def.id}.webp`} alt="" />
+        <span className="shader-pick-name">{def.name}</span>
+        <Icon name="chevron-down" size={9} />
+      </button>
+      {pickOpen && (
+        <>
+          <div className="popup-overlay" onPointerDown={() => setPickOpen(null)} />
+          <div
+            className="menu-popup shader-grid"
+            style={{
+              position: 'fixed',
+              left: Math.max(8, pickOpen.right - 236),
+              top: Math.min(window.innerHeight - 320, pickOpen.bottom + 4),
+            }}
           >
-            <Icon name="minus" size={10} />
-          </button>
-        </div>
-      ))}
-      {colors.length < 10 && (
-        <button className="inspector-action" onClick={() => patchFill({ shaderColors: [...colors, '#a78bfa'] })}>
-          <Icon name="plus" size={10} />Add color
-        </button>
+            {SHADERS.map((s) => (
+              <button
+                key={s.id}
+                className="shader-thumb"
+                data-active={s.id === def.id}
+                onClick={() => {
+                  const next = shaderDef(s.id)
+                  if (next) patchFill(presetFill(next, next.presets[0]))
+                  setPickOpen(null)
+                }}
+              >
+                <img src={`/shader-thumbs/${s.id}.webp`} alt={s.name} loading="lazy" />
+                <span>{s.name}</span>
+              </button>
+            ))}
+          </div>
+        </>
       )}
-      {def?.extraColorUniforms?.map((c) => (
-        <ColorField key={c.key} label={c.label} value={fill.shaderExtraColors?.[c.key] ?? '#ffffff'} fallback="#ffffff" onCommit={(v) => patchFill({ shaderExtraColors: { ...(fill.shaderExtraColors ?? {}), [c.key]: v } })} />
-      ))}
-      {def?.hasBack && (
-        <ColorField label="Background" value={fill.shaderBack ?? '#111111'} fallback="#111111" onCommit={(v) => patchFill({ shaderBack: v })} />
+      {def.presets.length > 1 && (
+        <SelectField
+          label="Preset"
+          value={(() => {
+            const i = def.presets.findIndex((p) => presetMatch(fill, def, p))
+            return i >= 0 ? String(i) : ''
+          })()}
+          options={[['', 'Custom'], ...def.presets.map((p, i) => [String(i), p.name] as [string, string])]}
+          onChange={(v) => {
+            if (v !== '') patchFill(presetFill(def, def.presets[Number(v)]))
+          }}
+        />
       )}
-      {def?.params.map((p) => (
-        <NumberField
-          key={p.key}
-          label={p.label}
-          value={fill.shaderParams?.[p.key] ?? p.default}
-          onCommit={(v) => patchFill({ shaderParams: { ...(fill.shaderParams ?? {}), [p.key]: Math.min(p.max, Math.max(p.min, v)) } })}
+      {def.maxColors > 0 && (
+        <>
+          {colors.map((c, i) => (
+            <div key={i} className="row-align">
+              <ColorField label={`Color ${i + 1}`} value={c} fallback="#888888" onCommit={(v) => setColor(i, v)} />
+              <button
+                className="inspector-action"
+                disabled={colors.length <= 1}
+                onClick={() => patchFill({ shaderColors: colors.filter((_, j) => j !== i) })}
+                data-tooltip="Remove color"
+              >
+                <Icon name="minus" size={10} />
+              </button>
+            </div>
+          ))}
+          {colors.length < def.maxColors && (
+            <button className="inspector-action" onClick={() => patchFill({ shaderColors: [...colors, '#a78bfa'] })}>
+              <Icon name="plus" size={10} />Add color
+            </button>
+          )}
+        </>
+      )}
+      {def.extraColors?.map((c) => (
+        <ColorField
+          key={c.key}
+          label={c.label}
+          value={fill.shaderExtraColors?.[c.key] ?? (def.defaults[c.key] as string) ?? '#ffffff'}
+          fallback="#ffffff"
+          onCommit={(v) => patchFill({ shaderExtraColors: { ...(fill.shaderExtraColors ?? {}), [c.key]: v } })}
         />
       ))}
+      {def.hasBack && (
+        <ColorField
+          label="Background"
+          value={fill.shaderBack ?? (def.defaults.colorBack as string) ?? '#111111'}
+          fallback="#111111"
+          onCommit={(v) => patchFill({ shaderBack: v })}
+        />
+      )}
+      {def.image && (
+        <button className="inspector-action" onClick={() => pickFillImage((src) => patchFill({ shaderImage: src }))}>
+          <Icon name="image" size={12} />{fill.shaderImage ? 'Replace image' : 'Select image'}
+        </button>
+      )}
+      {def.params.map((p) =>
+        p.bool ? (
+          <SelectField
+            key={p.key}
+            label={p.label}
+            value={numValue(p.key, (def.defaults[p.key] ? 1 : 0)) === 1 ? '1' : '0'}
+            options={[['0', 'Off'], ['1', 'On']]}
+            onChange={(v) => patchFill({ shaderParams: { ...(fill.shaderParams ?? {}), [p.key]: Number(v) } })}
+          />
+        ) : p.enum ? (
+          <SelectField
+            key={p.key}
+            label={p.label}
+            value={String(numValue(p.key, p.enum[String(def.defaults[p.key])] ?? 0))}
+            options={Object.entries(p.enum).map(([name, v]) => [String(v), name] as [string, string])}
+            onChange={(v) => patchFill({ shaderParams: { ...(fill.shaderParams ?? {}), [p.key]: Number(v) } })}
+          />
+        ) : (
+          <NumberField
+            key={p.key}
+            label={p.label}
+            value={numValue(p.key, paramDefault(p.key))}
+            decimals={p.step < 1 ? 2 : 0}
+            onCommit={(v) => patchFill({ shaderParams: { ...(fill.shaderParams ?? {}), [p.key]: Math.min(p.max, Math.max(p.min, v)) } })}
+          />
+        ),
+      )}
+      {def.animated && (
+        <NumberField
+          label="Speed"
+          value={numValue('speed', (def.defaults.speed as number) ?? 1)}
+          decimals={2}
+          onCommit={(v) =>
+            patchFill({
+              shaderParams: {
+                ...(fill.shaderParams ?? {}),
+                speed: Math.min(
+                  Math.max(3, ...def.presets.map((pr) => (typeof pr.params.speed === 'number' ? (pr.params.speed as number) : 0))),
+                  Math.max(0, v),
+                ),
+              },
+            })
+          }
+        />
+      )}
     </>
   )
 }
@@ -866,6 +1066,7 @@ function NodeInspector({ node, parent }: { node: DocNode; parent: DocNode | null
           </button>
         </span>
       </header>
+      <PanelCta />
 
       <Section title="Layout">
         <NumberField label="X" value={node.x} onCommit={(v) => patch({ x: Math.round(v) })} />
@@ -1143,19 +1344,7 @@ function NodeInspector({ node, parent }: { node: DocNode; parent: DocNode | null
       {node.kind === 'text' && (
         <Section title="Text">
           <TextField value={node.text ?? ''} onCommit={(v) => patch({ text: v })} />
-          <SelectField
-            label="Font"
-            wide
-            value={node.fontFamily ?? 'Inter'}
-            options={[
-              ['Inter', 'Inter'], ['SF Pro Text', 'SF Pro'], ['system-ui', 'System'],
-              ['Arial', 'Arial'], ['Helvetica', 'Helvetica'], ['Helvetica Neue', 'Helvetica Neue'],
-              ['Georgia', 'Georgia'], ['Times New Roman', 'Times New Roman'], ['Garamond', 'Garamond'],
-              ['Courier New', 'Courier New'], ['monospace', 'Monospace'], ['Menlo', 'Menlo'],
-              ['Verdana', 'Verdana'], ['Trebuchet MS', 'Trebuchet'], ['Impact', 'Impact'], ['Comic Sans MS', 'Comic Sans'],
-            ]}
-            onChange={(value) => patch({ fontFamily: value })}
-          />
+          <FontField value={node.fontFamily ?? 'Inter'} onCommit={(v) => patch({ fontFamily: v })} />
           <NumberField label="Size" value={node.fontSize ?? 14} onCommit={(v) => patch({ fontSize: Math.max(1, v) })} />
           <label className="chip-field">
             <span className="chip-label">Weight</span>
@@ -1298,7 +1487,7 @@ function NodeInspector({ node, parent }: { node: DocNode; parent: DocNode | null
         </Section>
       )}
       {node.kind !== 'text' && (
-        <Section title="Stroke">
+        <Section title="Outline">
             {node.kind !== 'ellipse' && node.kind !== 'vector' && (
               <SelectField
                 label="Sides"
@@ -1383,7 +1572,7 @@ function NodeInspector({ node, parent }: { node: DocNode; parent: DocNode | null
         </Section>
       )}
       {node.kind !== 'text' && (
-        <Section title="Outline">
+        <Section title="Outline offset">
           <label className="chip-field wide inspector-toggle">
             <span>Outline</span>
             <input
@@ -1513,6 +1702,7 @@ function FramePanel() {
           <PanelChrome />
         </span>
       </header>
+      <PanelCta />
       <Section title="Presets">
         {ARTBOARD_PRESETS.map((group) => (
           <div key={group.category} className="preset-block">
@@ -1559,6 +1749,7 @@ function CommentPanel() {
           <PanelChrome />
         </span>
       </header>
+      <PanelCta />
       <Section title={`Page comments (${comments.length})`}>
         <div className="comment-controls">
           <select className="chip-select" value={sort} onChange={(e) => setSort(e.target.value as 'new' | 'old')}>
@@ -1609,11 +1800,19 @@ function CommentPanel() {
   )
 }
 
-/** Paper right-panel chrome: zoom% menu + share popover. */
+/** Paper right-panel chrome: collaborator avatars + zoom% menu. */
 function PanelChrome() {
   const scale = useEditor((s) => s.camera.scale)
   return (
     <>
+      <span className="avatar-stack" aria-hidden>
+        <span className="avatar">
+          <Icon name="user" size={11} />
+        </span>
+        <span className="avatar avatar-add">
+          <Icon name="plus" size={9} />
+        </span>
+      </span>
       <button
         className="zoom-head"
         data-tooltip="Zoom options"
@@ -1625,19 +1824,18 @@ function PanelChrome() {
         {Math.round(scale * 100)}%
         <Icon name="chevron-down" size={10} />
       </button>
-      <button
-        className="share-btn"
-        onClick={(event) => {
-          const rect = event.currentTarget.getBoundingClientRect()
-          openMenu(rect.right - 160, rect.bottom + 4, [
-            { type: 'item', label: 'Copy link', onSelect: copyProjectLink },
-          ])
-        }}
-      >
-        <Icon name="share" size={11} />
-        Share
-      </button>
     </>
+  )
+}
+
+/** Paper inspector CTA strip below the panel header. */
+function PanelCta() {
+  return (
+    <div className="panel-cta">
+      <button className="copy-link" onClick={copyProjectLink}>
+        Copy link <span className="kbd-hint">⌘L</span>
+      </button>
+    </div>
   )
 }
 
@@ -1660,6 +1858,7 @@ function EmptyInspector() {
           <PanelChrome />
         </span>
       </header>
+      <PanelCta />
 
       <Section title="Background">
         <div className="chip-field wide">
@@ -1708,8 +1907,10 @@ export function Inspector() {
           <span className="panel-head-label">Multi-select</span>
           <span className="panel-head-actions">
             <span className="panel-head-meta">{selection.length} objects</span>
+            <PanelChrome />
           </span>
         </header>
+      <PanelCta />
         <div className="multi-count">
           {selection.length}
           <span> objects</span>
