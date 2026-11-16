@@ -50,6 +50,8 @@ const paths = {
   duplicate: 'M8 8h12v12H8zM4 4h12v3M4 4v12h3',
   grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
   list: 'M8 6h13M8 12h13M8 18h13M4 6h1M4 12h1M4 18h1',
+  user: 'M12 12a4 4 0 100-8 4 4 0 000 8zM4.5 20a7.5 7.5 0 0115 0',
+  check: 'M4 12.5l5 5L20 7',
 } as const
 
 export function Icon({ name, size = 16 }: IconProps) {

@@ -252,3 +252,13 @@ npx tsc --noEmit && npx vite build
 - **检查器**：Shader 下拉 30 项、Preset 下拉（124 预设 + Custom 识别）、色板按 maxColors 限长、命名色字段、参数按 bool/enum/number 分列、Speed（仅 animated）
 - **S 菜单 34 项**：30 个官方 shader（各用其默认预设）+ 4 个 CSS 图案预设（改名标注 pattern）；菜单容器加 max-height 滚动
 - 验证：build ✓；Mesh gradient/Gem smoke 真实 Paper GLSL 渲染 ✓；导出选择器兼容 `.shader-fill canvas` ✓
+
+## UI/UX 一比一对齐 Paper.design（编辑器外观）
+
+- **顶部 chrome**：右侧栏首行改为 Paper 布局——头像堆（灰圆 + 蓝色 ⊕ 加人）、缩放百分比、`Copy link ⌘L` 全宽按钮；页面无选中态同样显示。
+- **面板分区**：Fill 卡改为类型下拉（Solid / Linear / Radial / Conic / Image / Pattern / Shader）；描边分区更名 Outline，原 Outline 更名 Outline offset，与 Paper 术语一致。
+- **左侧栏**：当前页面行加 ✓ 标记（Paper Pages 树样式）。
+- **细节 token**：`--color-chip`、`--shadow-control`/`--shadow-toggle`（Paper 精确的 inset+offset 复合阴影）、`corner-shape: superellipse(1.3)`（Chrome squircle）应用到 chip/控件/色板/Copy link。
+- **工具栏**：浮动白色胶囊工具栏（此前已完成，与 Paper 一致）。
+
+参照素材：app.paper.design 公开 CSS（`/assets/styles-*.css`）中的真实 token 值 + 官网 mockup 截图。

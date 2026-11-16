@@ -7,7 +7,6 @@ import { focusComment } from '../model/store'
 import { copySelectionAsPng, downloadSelectionPdf, downloadSelectionRaster, downloadSelectionSvg, downloadShaderVideo, exportCombinedPdf, exportNodeEntries } from '../model/export'
 import { countPageNodes, pageArtboards } from '../model/doc'
 import { openColorFormatMenu, openZoomMenu } from './menuActions'
-import { openMenu } from './menuStore'
 import { copyProjectLink } from '../model/navigation'
 import { Icon } from './Icon'
 import { PanelResize } from './PanelResize'
@@ -635,7 +634,6 @@ function pickFillImage(onPick: (src: string) => void) {
 }
 
 function FillRow({ fill, index, onPatch }: { fill: Fill; index: number; onPatch: (index: number, patch: Partial<Fill>) => void }) {
-  const typeValue = fill.type === 'gradient' ? (fill.shape ?? 'linear') : fill.type
   const patchFill = (p: Partial<Fill>) => onPatch(index, p)
   const setType = (v: string) => {
     if (v === 'solid') patchFill({ type: 'solid', color: fill.color ?? '#dddddd' })
@@ -651,7 +649,7 @@ function FillRow({ fill, index, onPatch }: { fill: Fill; index: number; onPatch:
     <>
       <SelectField
         label={index === 0 ? 'Fill' : `Fill ${index + 1}`}
-        value={typeValue}
+        value={fill.type === 'gradient' ? (fill.shape ?? 'linear') : fill.type}
         options={[
           ['solid', 'Solid'],
           ['linear', 'Linear gradient'],
@@ -948,6 +946,7 @@ function NodeInspector({ node, parent }: { node: DocNode; parent: DocNode | null
           </button>
         </span>
       </header>
+      <PanelCta />
 
       <Section title="Layout">
         <NumberField label="X" value={node.x} onCommit={(v) => patch({ x: Math.round(v) })} />
@@ -1380,7 +1379,7 @@ function NodeInspector({ node, parent }: { node: DocNode; parent: DocNode | null
         </Section>
       )}
       {node.kind !== 'text' && (
-        <Section title="Stroke">
+        <Section title="Outline">
             {node.kind !== 'ellipse' && node.kind !== 'vector' && (
               <SelectField
                 label="Sides"
@@ -1465,7 +1464,7 @@ function NodeInspector({ node, parent }: { node: DocNode; parent: DocNode | null
         </Section>
       )}
       {node.kind !== 'text' && (
-        <Section title="Outline">
+        <Section title="Outline offset">
           <label className="chip-field wide inspector-toggle">
             <span>Outline</span>
             <input
@@ -1595,6 +1594,7 @@ function FramePanel() {
           <PanelChrome />
         </span>
       </header>
+      <PanelCta />
       <Section title="Presets">
         {ARTBOARD_PRESETS.map((group) => (
           <div key={group.category} className="preset-block">
@@ -1641,6 +1641,7 @@ function CommentPanel() {
           <PanelChrome />
         </span>
       </header>
+      <PanelCta />
       <Section title={`Page comments (${comments.length})`}>
         <div className="comment-controls">
           <select className="chip-select" value={sort} onChange={(e) => setSort(e.target.value as 'new' | 'old')}>
@@ -1691,11 +1692,19 @@ function CommentPanel() {
   )
 }
 
-/** Paper right-panel chrome: zoom% menu + share popover. */
+/** Paper right-panel chrome: collaborator avatars + zoom% menu. */
 function PanelChrome() {
   const scale = useEditor((s) => s.camera.scale)
   return (
     <>
+      <span className="avatar-stack" aria-hidden>
+        <span className="avatar">
+          <Icon name="user" size={11} />
+        </span>
+        <span className="avatar avatar-add">
+          <Icon name="plus" size={9} />
+        </span>
+      </span>
       <button
         className="zoom-head"
         data-tooltip="Zoom options"
@@ -1707,19 +1716,18 @@ function PanelChrome() {
         {Math.round(scale * 100)}%
         <Icon name="chevron-down" size={10} />
       </button>
-      <button
-        className="share-btn"
-        onClick={(event) => {
-          const rect = event.currentTarget.getBoundingClientRect()
-          openMenu(rect.right - 160, rect.bottom + 4, [
-            { type: 'item', label: 'Copy link', onSelect: copyProjectLink },
-          ])
-        }}
-      >
-        <Icon name="share" size={11} />
-        Share
-      </button>
     </>
+  )
+}
+
+/** Paper inspector CTA strip below the panel header. */
+function PanelCta() {
+  return (
+    <div className="panel-cta">
+      <button className="copy-link" onClick={copyProjectLink}>
+        Copy link <span className="kbd-hint">⌘L</span>
+      </button>
+    </div>
   )
 }
 
@@ -1742,6 +1750,7 @@ function EmptyInspector() {
           <PanelChrome />
         </span>
       </header>
+      <PanelCta />
 
       <Section title="Background">
         <div className="chip-field wide">
@@ -1790,8 +1799,10 @@ export function Inspector() {
           <span className="panel-head-label">Multi-select</span>
           <span className="panel-head-actions">
             <span className="panel-head-meta">{selection.length} objects</span>
+            <PanelChrome />
           </span>
         </header>
+      <PanelCta />
         <div className="multi-count">
           {selection.length}
           <span> objects</span>

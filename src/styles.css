@@ -29,7 +29,7 @@
   --color-separator: #e2e2e2;
   --color-separator-highlight: #dadada;
   --color-control: #f9f9f9;
-  --color-chip: #f6f6f6;
+  --color-chip: #f4f4f4aa;
   --color-chip-outline: #0000001f;
   --color-chip-selected: color-mix(in oklab, oklch(78% 0.12 258 / 0.5) 30%, transparent);
   --color-chip-selected-outline: color-mix(in oklab, oklch(74% 0.12 258) 50%, transparent);
@@ -64,8 +64,8 @@
   --font-mono: _PaperMono, ui-monospace, 'SF Mono', Menlo, monospace;
   --font-weight-caption: 465;
 
-  --shadow-control: inset 0 1px #ffffff08, inset 0 0 1px 0.5px #fff1, 0 1px 0.5px #0002, 0 0 3px -1px #000b;
-  --shadow-toggle: inset 0 1px #ffffff08, inset 0 0 1px 0.5px #fff2, 0 1px 0.5px #0002, 0 0 3px -1px #000b;
+  --shadow-control: inset 0 1px #fff8, inset 0 0 1px 1px #fff8, 0 0.5px 1px #00000018, 0 0 1px #0001, 0 0 4px -1px #0001;
+  --shadow-toggle: inset 0 1px #fff8, inset 0 0 1px 1px #fff8, 0 0 1px #0001, 0 0 3px -1px #0001;
 
   font-family: var(--font-ui);
   font-size: 12px;
@@ -568,6 +568,11 @@ button {
 
 .page-row[data-current] .page-name {
   font-weight: 500;
+}
+
+.page-row > svg {
+  flex: none;
+  color: var(--color-gray-2);
 }
 
 .page-count {
@@ -1112,6 +1117,83 @@ button {
   outline: 1px solid var(--color-chip-outline);
   outline-offset: -1px;
   color: var(--color-gray-1);
+}
+
+/* Paper's superellipse chip corners (progressive enhancement). */
+@supports (corner-shape: superellipse(1.3)) {
+  .chip-field,
+  .copy-link,
+  .zoom-head,
+  .swatch {
+    corner-shape: superellipse(1.3);
+  }
+}
+
+/* Inspector top chrome: avatars + Copy link CTA. */
+.avatar-stack {
+  display: flex;
+  align-items: center;
+  margin-right: 2px;
+}
+
+.avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-panel-highlight-2);
+  color: var(--color-gray-2);
+  border: 1.5px solid var(--color-panel);
+  box-sizing: border-box;
+}
+
+.avatar-add {
+  width: 16px;
+  height: 16px;
+  margin-left: -6px;
+  align-self: flex-end;
+  background: var(--color-menu-highlight);
+  color: #fff;
+}
+
+.panel-cta {
+  padding: 2px 12px 8px;
+}
+
+.copy-link {
+  all: unset;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 24px;
+  border-radius: var(--radius-control);
+  background: var(--color-control);
+  outline: 1px solid var(--color-chip-outline);
+  outline-offset: -1px;
+  box-shadow: var(--shadow-control);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-gray-1);
+  cursor: default;
+  box-sizing: border-box;
+}
+
+.copy-link:hover {
+  background: var(--color-control-pressed, #fcfcfc);
+}
+
+.copy-link:active {
+  background: var(--color-toggle);
+}
+
+.kbd-hint {
+  font-size: 10px;
+  color: var(--color-gray-3);
+  letter-spacing: 0.5px;
 }
 
 .chip-field:focus-within {
