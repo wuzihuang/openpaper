@@ -103,6 +103,7 @@ import { measureDocument, measureMap } from './measure'
 import { hitTest, topLevelChild } from './hitTest'
 import { computeSnap } from './snap'
 import { cameraMatrix, zoomAtPoint } from './camera'
+import { ensureFontLoaded } from '../model/fonts'
 import { DocumentTree } from './NodeView'
 import { Hud } from './Hud'
 import { closestOnPath, vectorPathD } from '../model/vector'
@@ -260,6 +261,12 @@ export function Canvas() {
   const pen = useEditor((s) => s.ui.pen)
   const pathEdit = useEditor((s) => s.ui.pathEdit)
   const selection = useEditor((s) => s.ui.selection)
+
+  // Lazy-load every Google font used by text nodes so saved docs render their
+  // typography on reopen (not only after touching the inspector's font picker).
+  useEffect(() => {
+    for (const n of Object.values(doc.nodes)) if (n.kind === 'text' && n.fontFamily) ensureFontLoaded(n.fontFamily)
+  }, [doc])
   const measure = useEditor((s) => s.ui.measure)
   const commentsVisible = useEditor((s) => s.ui.commentsVisible)
   const pixelGrid = useEditor((s) => s.ui.pixelGrid)

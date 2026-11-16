@@ -67,8 +67,46 @@ export function ensureFontLoaded(family: string) {
   loaded.add(family)
   const link = document.createElement('link')
   link.rel = 'stylesheet'
+  // Variable-axis request first; static fonts (e.g. Permanent Marker) have no
+  // wght range/ital axis and return HTTP 400 — fall back to the default cut.
+  link.onerror = () => {
+    if (link.dataset.retry) return
+    link.dataset.retry = '1'
+    link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}&display=swap`
+  }
   link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}:ital,wght@0,100..900;1,100..900&display=swap`
   document.head.appendChild(link)
+}
+
+/** css2 stylesheet URL for catalog Google fonts used by a set of text nodes.
+ * Unknown/non-catalog families are dropped so they can't 404 the whole sheet. */
+export function googleFontsUrl(families: string[]): string | null {
+  const ok = families.filter((f) => FONT_FAMILIES.find((e) => e.family === f)?.google)
+  if (!ok.length) return null
+  return `https://fonts.googleapis.com/css2?${ok.map((f) => `family=${encodeURIComponent(f)}`).join('&')}&display=swap`
+}
+
+/** Fetch a Google Fonts stylesheet and inline every woff2 as a data URI, for
+ * SVGs rasterized via <img> (external resources are blocked there). */
+export async function embeddedFontCss(families?: string[]): Promise<string> {
+  const url = googleFontsUrl(families ?? [])
+  if (!url) return ''
+  try {
+    let css = await (await fetch(url)).text()
+    for (const m of [...css.matchAll(/url\((https:\/\/fonts\.gstatic\.com[^)]+)\)/g)]) {
+      try {
+        const buf = new Uint8Array(await (await fetch(m[1])).arrayBuffer())
+        let bin = ''
+        for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000))
+        css = css.replaceAll(m[0], `url(data:font/woff2;base64,${btoa(bin)})`)
+      } catch {
+        /* keep remote url for that subset */
+      }
+    }
+    return css
+  } catch {
+    return ''
+  }
 }
 
 /** Preload every Google font in the catalog (called when the font menu opens). */
