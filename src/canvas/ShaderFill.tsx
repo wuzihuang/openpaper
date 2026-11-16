@@ -54,6 +54,6 @@ export const ShaderFill = memo(function ShaderFill({ fill }: { fill: Fill }) {
   const def = shaderDef(fill.shaderKind)
   if (!def) return null
   const Shader = def.component
-  const props = shaderProps(fill, def, def.image ? defaultShaderImage() : undefined)
+  const props = shaderProps(fill, def, def.image === 'required' ? defaultShaderImage() : undefined)
   return <Shader className="shader-fill" {...props} />
 })

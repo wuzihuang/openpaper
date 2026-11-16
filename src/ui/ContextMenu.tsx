@@ -71,16 +71,20 @@ export function ContextMenu() {
         }
       }
     }
+    const onWheel = (event: WheelEvent) => {
+      if (ref.current?.contains(event.target as Node)) return
+      closeMenu()
+    }
     const onDismiss = () => closeMenu()
     window.addEventListener('pointerdown', onPointerDown, true)
     window.addEventListener('keydown', onKeyDown, true)
-    window.addEventListener('wheel', onDismiss, true)
+    window.addEventListener('wheel', onWheel, true)
     window.addEventListener('resize', onDismiss)
     window.addEventListener('blur', onDismiss)
     return () => {
       window.removeEventListener('pointerdown', onPointerDown, true)
       window.removeEventListener('keydown', onKeyDown, true)
-      window.removeEventListener('wheel', onDismiss, true)
+      window.removeEventListener('wheel', onWheel, true)
       window.removeEventListener('resize', onDismiss)
       window.removeEventListener('blur', onDismiss)
     }

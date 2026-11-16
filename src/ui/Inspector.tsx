@@ -868,7 +868,17 @@ function ShaderFillEditor({ fill, patchFill }: { fill: Fill; patchFill: (p: Part
           label="Speed"
           value={numValue('speed', (def.defaults.speed as number) ?? 1)}
           decimals={2}
-          onCommit={(v) => patchFill({ shaderParams: { ...(fill.shaderParams ?? {}), speed: Math.min(3, Math.max(0, v)) } })}
+          onCommit={(v) =>
+            patchFill({
+              shaderParams: {
+                ...(fill.shaderParams ?? {}),
+                speed: Math.min(
+                  Math.max(3, ...def.presets.map((pr) => (typeof pr.params.speed === 'number' ? (pr.params.speed as number) : 0))),
+                  Math.max(0, v),
+                ),
+              },
+            })
+          }
         />
       )}
     </>

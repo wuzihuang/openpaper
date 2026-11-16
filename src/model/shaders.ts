@@ -141,7 +141,20 @@ function def(
   presets: readonly { name: string; params: ShaderPresetParams }[],
   opts: Partial<Omit<ShaderDef, 'id' | 'name' | 'component' | 'presets' | 'defaults'>> = {},
 ): ShaderDef {
-  return { id, name, component, presets: presets as ShaderPreset[], defaults: presets[0]?.params ?? {}, maxColors: 0, params: [], ...opts }
+  const out: ShaderDef = { id, name, component, presets: presets as ShaderPreset[], defaults: presets[0]?.params ?? {}, maxColors: 0, params: [], ...opts }
+  // Official presets sometimes exceed the documented ranges or use finer
+  // granularity than the documented step — widen so inspector edits of an
+  // untouched preset never snap its values.
+  for (const p of out.params) {
+    for (const preset of out.presets) {
+      const v = preset.params[p.key]
+      if (typeof v !== 'number') continue
+      if (v < p.min) p.min = v
+      if (v > p.max) p.max = v
+      while (p.step > 0.001 && Math.abs(v / p.step - Math.round(v / p.step)) > 1e-9) p.step /= 10
+    }
+  }
+  return out
 }
 
 /** All 30 shaders published by paper.design, in canvas-picker order. */
@@ -450,7 +463,7 @@ export const SHADERS: ShaderDef[] = [
       { key: 'colorFront', label: 'Foreground' },
       { key: 'colorHighlight', label: 'Highlight' },
     ],
-    image: 'optional',
+    image: 'required',
     animated: true,
     params: [
       P('type', 'Type', 0, 4, 1, { enum: DitheringTypes }),
