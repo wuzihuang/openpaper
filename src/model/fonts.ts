@@ -57,10 +57,13 @@ export const FONT_FAMILIES: { family: string; google?: boolean }[] = [
 
 const loaded = new Set<string>()
 
-/** Lazy-load a Google font family (all weights, italics) exactly once. */
+/** Lazy-load a font family (all weights, italics) exactly once. System/catalog
+ * entries flagged `google: false` are skipped; anything else is tried against
+ * Google Fonts (harmless when the family doesn't exist there). */
 export function ensureFontLoaded(family: string) {
   const entry = FONT_FAMILIES.find((f) => f.family === family)
-  if (!entry?.google || loaded.has(family)) return
+  if (entry && !entry.google) return
+  if (loaded.has(family)) return
   loaded.add(family)
   const link = document.createElement('link')
   link.rel = 'stylesheet'
