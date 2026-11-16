@@ -18,6 +18,35 @@ export function parseHexColor(value: string): Rgb | null {
 
 const srgbToLinear = (c: number) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4))
 
+/** Paper color-field input: accepts any CSS color (oklch(), hsl(), rgb(), named),
+ * normalized to hex (with alpha suffix when needed). Returns null when unparseable. */
+export function normalizeCssColor(value: string): string | null {
+  const v = value.trim()
+  if (!v) return null
+  if (v === 'transparent') return v
+  if (/^#[0-9a-fA-F]{6}$/.test(v)) return v.toLowerCase()
+  if (/^#[0-9a-fA-F]{3,8}$/.test(v) || /^[a-zA-Z]+$/.test(v) || /\(|\)/.test(v)) {
+    try {
+      const ctx = document.createElement('canvas').getContext('2d')
+      if (!ctx) return null
+      ctx.fillStyle = '#000'
+      ctx.fillStyle = v
+      const parsed = ctx.fillStyle as string
+      const hex = /^#([0-9a-f]{6}|[0-9a-f]{8})$/i.exec(parsed)
+      if (hex) return parsed.toLowerCase()
+      const rgb = /^rgba?\(([^)]+)\)$/.exec(parsed)?.[1].split(',').map((n) => Number(n.trim()))
+      if (rgb && rgb.length >= 3) {
+        const h = (n: number) => Math.round(Math.min(255, Math.max(0, n))).toString(16).padStart(2, '0')
+        const alpha = rgb[3] !== undefined && rgb[3] < 1 ? h(rgb[3] * 255) : ''
+        return `#${h(rgb[0])}${h(rgb[1])}${h(rgb[2])}${alpha}`
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+  return null
+}
+
 function toHsl({ r, g, b }: Rgb): string {
   const max = Math.max(r, g, b)
   const min = Math.min(r, g, b)

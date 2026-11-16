@@ -8,6 +8,7 @@ import { copySelectionAsPng, downloadSelectionPdf, downloadSelectionRaster, down
 import { countPageNodes, pageArtboards } from '../model/doc'
 import { openColorFormatMenu, openZoomMenu } from './menuActions'
 import { copyProjectLink } from '../model/navigation'
+import { normalizeCssColor } from '../model/color'
 import { Icon } from './Icon'
 import { PanelResize } from './PanelResize'
 
@@ -135,6 +136,10 @@ function ColorField({
         className="chip-input mono"
         value={value}
         onChange={(event) => onCommit(event.target.value)}
+        onBlur={(event) => {
+          const normalized = normalizeCssColor(event.target.value)
+          if (normalized && normalized !== value) onCommit(normalized)
+        }}
         spellCheck={false}
       />
     </label>

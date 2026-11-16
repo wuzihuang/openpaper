@@ -280,3 +280,7 @@ npx tsc --noEmit && npx vite build
 - `Fill.opacity`（0–1）：CSS 侧在 `fillToCss` 内用 `color-mix` 折进 solid/gradient/pattern 颜色；shader 填充走元素 `opacity`；SVG 导出输出 `fill-opacity`。
 - Inspector 每个填充行新增 Opacity 数值字段（0–100，可 scrub）。
 - 已知差异：image 填充的透明度在纯 CSS background 层无法折叠，暂不生效（Paper 用图层合成实现）。
+
+## 色值字段多格式输入
+
+- `normalizeCssColor`：ColorField 失焦时接受任意 CSS 色值（`oklch()`/`hsl()`/`rgb()`/色名/3–8 位 hex），经 canvas 解析规范化为 hex（含 alpha 后缀）；非法输入保留原样。
