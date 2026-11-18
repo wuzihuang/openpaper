@@ -136,7 +136,9 @@ const CURSOR_ARROW = 'url(/cursors/cursor-arrow.webp) 4 3, default'
 const CURSOR_GRAB = 'url(/cursors/cursor-hand-open.webp) 16 16, grab'
 const CURSOR_GRABBING = 'url(/cursors/cursor-hand-closed.webp) 16 16, grabbing'
 const CURSOR_MOVE = 'url(/cursors/cursor-move.webp) 16 16, move'
-const CURSOR_CROSS = 'crosshair'
+const CURSOR_CROSS = 'url(/cursors/cursor-crosshair.webp) 16 16, crosshair'
+const CURSOR_COMMENT = 'url(/cursors/cursor-comment.webp) 16 16, default'
+const CURSOR_ZOOM_IN = 'url(/cursors/cursor-zoom-in.webp) 16 16, zoom-in'
 
 type DrawTool = 'frame' | 'rect' | 'ellipse' | 'text'
 
@@ -1164,13 +1166,17 @@ export function Canvas() {
       root.style.cursor =
         state.ui.spaceDown || state.ui.tool === 'hand'
           ? CURSOR_GRAB
-          : drawing
-            ? CURSOR_CROSS
-            : handle !== null
-              ? CURSORS[handle]
-              : rotateAt(local)
-                ? CURSOR_MOVE
-                : CURSOR_ARROW
+          : state.ui.tool === 'comment'
+            ? CURSOR_COMMENT
+            : state.ui.tool === 'zoom'
+              ? CURSOR_ZOOM_IN
+              : drawing
+                ? CURSOR_CROSS
+                : handle !== null
+                  ? CURSORS[handle]
+                  : rotateAt(local)
+                    ? CURSOR_MOVE
+                    : CURSOR_ARROW
       return
     }
 

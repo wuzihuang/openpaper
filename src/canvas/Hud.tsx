@@ -4,8 +4,8 @@ import { useEditor } from '../model/store'
 import { pageArtboards } from '../model/doc'
 import { useMeasuresVersion, measureMap } from './measure'
 
-const ACCENT = '#4D8AE4'
-const ACCENT_SOFT = 'rgba(77, 138, 228, 0.55)'
+const ACCENT = '#4C94FB' // --color-blue-3: oklch(67% .17 258)
+const ACCENT_SOFT = 'rgba(134, 185, 255, 0.5)' // --color-selection: oklch(78% .12 258 / .5)
 const GUIDE = '#FF2D6F'
 const HUD_FONT = '_Inter, -apple-system, BlinkMacSystemFont, system-ui, sans-serif'
 

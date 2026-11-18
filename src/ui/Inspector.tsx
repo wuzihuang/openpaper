@@ -29,12 +29,47 @@ function NumberField({
 }) {
   const format = (next: number) => !Number.isFinite(next) ? '' : decimals > 0 ? next.toFixed(decimals) : String(Math.round(next))
   const [draft, setDraft] = useState(format(value))
+  const scrub = useRef<{ startX: number; startValue: number; pointerId: number; field: HTMLElement } | null>(null)
   useEffect(() => {
     setDraft(format(value))
   }, [value, decimals])
+  const endScrub = () => {
+    scrub.current?.field.removeAttribute('data-scrubbing')
+    scrub.current = null
+  }
   return (
     <label className="chip-field">
-      <span className="chip-label">{label}</span>
+      <span
+        className="chip-label"
+        data-scrubbable
+        onPointerDown={(event) => {
+          if (disabled || event.button !== 0) return
+          const field = event.currentTarget.closest('.chip-field') as HTMLElement | null
+          const parsed = Number.parseFloat(draft)
+          scrub.current = {
+            startX: event.clientX,
+            startValue: Number.isFinite(parsed) ? parsed : value,
+            pointerId: event.pointerId,
+            field: field!,
+          }
+          field?.setAttribute('data-scrubbing', '')
+          event.currentTarget.setPointerCapture(event.pointerId)
+          event.preventDefault()
+        }}
+        onPointerMove={(event) => {
+          const s = scrub.current
+          if (!s || event.pointerId !== s.pointerId) return
+          const step = event.shiftKey ? 10 : event.altKey ? 0.1 : 1
+          const next = s.startValue + (event.clientX - s.startX) * step
+          setDraft(format(next))
+          onCommit(Number(format(next)))
+        }}
+        onPointerUp={endScrub}
+        onPointerCancel={endScrub}
+        onLostPointerCapture={endScrub}
+      >
+        {label}
+      </span>
       <input
         className="chip-input"
         value={disabled ? '' : draft}
@@ -388,6 +423,7 @@ function SelectField({
       <select className="chip-select" value={value} onChange={(event) => onChange(event.target.value)}>
         {options.map(([option, text]) => <option key={option} value={option}>{text}</option>)}
       </select>
+      <span className="field-caret" aria-hidden />
     </label>
   )
 }

@@ -243,3 +243,25 @@ npx tsc --noEmit && npx vite build
 - **bloom-dots**（hg 源码）：光斑圆点 shader，需 `u_colorBloom` 第二颜色 uniform → ShaderDef.extraColorUniforms 通用机制 + Fill.shaderExtraColors + 检查器颜色字段。shader 共 6 种，S 菜单 14 项
 - **token 11 类型补齐**：DesignToken.type 扩展为 Paper 全集（+breakpoint/container 组织型），Theme 面板 11 分组
 - **Video 导出**（Paper exportMeta 视频）：`downloadShaderVideo` —— 含 shader 填充的节点 Export 区出现「Export video (3s)」，canvas.captureStream(30fps)+MediaRecorder → MP4（支持时）/WebM 下载
+
+## 批次 6：REA 挖掘真实资源 → 图标 + 界面框架还原
+- **Chromium HTTP 缓存挖掘**：Paper.app 无法启动时，解析 `~/Library/Application Support/Paper/Cache/Cache_Data`（Simple Cache：24B 头+key+brotli body），提取 1495 个真实资源到 `/tmp/paper-assets/`（最新构建 `main-DhDiNeWH.js` + `main-CXNcCEfw.css`，token 全集导出 `/tmp/paper-assets/paper-styles.css`）
+- **真实工具栏图标**（`src/ui/Icon.tsx` 重写）：从 bundle 解析 `NAME=e=>jsx('svg',…)` 工厂，提取 30 个图标组件的真实 viewBox/fill/stroke/path d；工具栏 10 个工具图标全部替换为原版几何（Move 箭头描边、Pan 手型填充、Frame 四角括号、Rectangle 0.5 描边 rect、Pen 钢笔尖、Text "Aa" 20×14、Comment 17×17、Shaders 方框+菱形、Create image/SVG 星光）；另替换 lock/unlock/fit/expand；IconDef 支持多元素（path+rect）、元素级 fill/fillRule
+- **flush 界面框架**（真实 Paper 非 floating 布局）：`.left-panel` 左缘通栏（top:0 bottom:0 left:0 无圆角无边框）、`.tool-rail` 40px 通高栏紧贴左栏（border-inline 双色 separator/separator-highlight、width:40 content-box、padding 2px 0）、`.inspector` 右缘通栏（仅 border-left）；面板折叠时 rail 退化为 floating pill（left:8px 垂直居中、12px 圆角、panel 92% 半透明 + blur(12px) + popup-shadow）
+- **rail-sep** 还原 `mx-12 my-8 h-px bg-gray-5`（16px 可见线）；Design/Theme toggle 去图标（原版纯文本 h-24）
+- 真实 cursor 27 枚已落 `public/cursors/`（此前批次）
+- 遗留：`toolbar-button-secondary` pressed 态、panel-row 细节、pages-head 样式可继续对齐 —— 原始语料在 /tmp/paper-assets/（icons.json/_index.tsv/paper-styles.css）
+
+## 批次 7：交互点击 + UIUX 细节对齐（main-DhDiNeWH.js 真实样式提取）
+- **全局 focus ring**：`:focus-visible` → 2px `--color-focus` outline（swatch/token-swatch 用 `:focus-within`）；layer/page 重命名输入 1.5px --color-focus、-1px offset
+- **控件底色**：`.chip-field`/`.search-chip` 改 `--color-control`（暗色 = `rgb(249 249 249 / 6%)`）、高 24px、radius-6；`.field-control` focus → `--color-focus` 描边
+- **菜单**（`.menu-popup`）：padding 16px、radius-8、item 13px/gray-1、separator full-width、check 列；弹出动画 `menu-pop .12s var(--ease-out-fast) backwards`；键盘导航（方向键/Enter/Esc/点外关闭）已有
+- **tooltip**：深色 `--color-gray-1` 底、白字 11px、radius-6、padding 4px 6px；420ms 延迟、切换按钮即时替换（对齐 Base UI 行为）
+- **switch**：`.inspector-toggle` checkbox 改为真实 iOS 开关 —— 36×20、thumb 16×16 白圆、`translate .15s ease`、checked → `--color-blue-3`
+- **toggle-group**：h-24 `--color-toggle` 底、item margin-1、`data-pressed` → `--color-toggle-pressed` + `--shadow-toggle`（纯文本，还原 Design/Theme）
+- **layer/page 行**：28px、通边无 radius、hover → `panel-highlight-1`、选中 → `panel-highlight-2`（灰色非蓝）；`.layer-eye` hover bg；`.mini-icon` ghost-hover
+- **tab-bar**：left 偏移 `leftPanelWidth + 42` 避开 rail；`.tool-btn` `:active` → `--color-ghost-pressed`；`.zoom-chip` 对齐 rail 右缘
+- **select caret**：`SelectField` 加 `.field-caret` CSS 三角（gray-4）
+- **HUD 颜色**：ACCENT → `#4C94FB`（`--color-blue-3` oklch(67% .17 258)）、hover outline → `rgba(134,185,255,.5)`（`--color-selection` oklch(78% .12 258/.5)）
+- **canvas 光标**：按工具切真实 webp —— draw 类 `cursor-crosshair`、comment `cursor-comment`、zoom `cursor-zoom-in`、pan 已有；NumField 标签 `cursor-resize-x` scrub-drag
+- **left-footer**：`px-16 py-12` 12px gray-2（对齐 Paper 侧栏页脚）；折叠左栏 `collapsed-bar` 居中竖排页名

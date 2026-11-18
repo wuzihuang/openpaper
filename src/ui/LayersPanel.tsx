@@ -516,7 +516,6 @@ export function LayersPanel() {
               data-active={tab === 'design'}
               onClick={() => setUI({ panelTab: 'design' })}
             >
-              <Icon name="layers" size={12} />
               Design
             </button>
             <button
@@ -525,7 +524,6 @@ export function LayersPanel() {
               data-active={tab === 'theme'}
               onClick={() => setUI({ panelTab: 'theme' })}
             >
-              <Icon name="palette" size={12} />
               Theme
             </button>
           </div>
