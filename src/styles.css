@@ -198,6 +198,7 @@ button {
 }
 
 .doc-mark {
+  all: unset;
   position: relative;
   width: 18px;
   height: 18px;
@@ -2294,7 +2295,7 @@ kbd {
   color: #fff;
   background: var(--color-blue-5, #4a8dff);
 }
-.doc-menu-btn { all: unset; cursor: default; }
+.doc-menu-btn { cursor: default; }
 .doc-menu-btn:hover { filter: brightness(1.15); }
 
 /* ---------- Paper appBar tabs ---------- */

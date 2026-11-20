@@ -4,6 +4,9 @@ node_modules/
 # Build output
 dist/
 
+# Local SQLite store (server/)
+data/
+
 # Local env files
 .env
 .env.*

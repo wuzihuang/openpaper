@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Doc, DocNode, DocPage } from '../model/types'
 import {
   addPage,
@@ -57,6 +57,16 @@ function subtreeMatches(doc: { nodes: Record<string, DocNode> }, node: DocNode, 
   })
 }
 
+function subtreeSelected(
+  doc: { nodes: Record<string, DocNode> },
+  node: DocNode | undefined,
+  sel: Set<string>,
+): boolean {
+  if (!node) return false
+  if (sel.has(node.id)) return true
+  return node.children.some((id) => subtreeSelected(doc, doc.nodes[id], sel))
+}
+
 function LayerRow({ node, depth, selection, query }: RowProps) {
   const doc = useEditor((s) => s.doc)
   const renaming = useEditor((s) => s.ui.renamingNodeId === node.id)
@@ -66,6 +76,19 @@ function LayerRow({ node, depth, selection, query }: RowProps) {
     if (epoch > 0) setOpen(false)
   }, [epoch])
   const selected = selection.includes(node.id)
+  const selSet = useMemo(() => new Set(selection), [selection])
+  const hasSelectedDescendant = useMemo(
+    () => node.children.some((id) => subtreeSelected(doc, doc.nodes[id], selSet)),
+    [doc, node, selSet],
+  )
+  const rowRef = useRef<HTMLDivElement>(null)
+  // Paper: selecting on canvas expands ancestor groups and scrolls the row into view.
+  useEffect(() => {
+    if (hasSelectedDescendant) setOpen(true)
+  }, [hasSelectedDescendant])
+  useEffect(() => {
+    if (selected) rowRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [selected])
   const hasChildren = node.children.length > 0
   const expanded = query ? true : open
   const [dropZone, setDropZone] = useState<'' | 'before' | 'after' | 'into'>('')
@@ -73,6 +96,7 @@ function LayerRow({ node, depth, selection, query }: RowProps) {
   return (
     <div className="layer-group">
       <div
+        ref={rowRef}
         className={`layer-row${depth === 0 ? ' depth-0' : ''}${node.visible ? '' : ' is-hidden'}${node.locked ? ' is-locked' : ''}`}
         style={{ paddingLeft: 4 + depth * 12 }}
         draggable={!renaming}
@@ -470,13 +494,7 @@ export function LayersPanel() {
 
   return (
     <aside className="left-panel">
-      <header
-        className="doc-header"
-        onContextMenu={(event) => {
-          event.preventDefault()
-          openProjectMenu(event.clientX, event.clientY)
-        }}
-      >
+      <header className="doc-header">
         <button
           className="doc-mark doc-menu-btn"
           data-tooltip="Menu"
@@ -539,15 +557,7 @@ export function LayersPanel() {
           </label>
         </div>
 
-        <div
-          className="layer-scroll"
-          onContextMenu={(event) => {
-            const target = event.target as HTMLElement
-            if (target.closest('.layer-row, .page-row, .page-add')) return
-            event.preventDefault()
-            openProjectMenu(event.clientX, event.clientY)
-          }}
-        >
+        <div className="layer-scroll">
           {tab === 'theme' ? (
             <TokenList query={normalized} />
           ) : (

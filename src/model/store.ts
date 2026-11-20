@@ -3,6 +3,7 @@ import type { DesignToken, Camera, Doc, DocComment, DocNode, DocPage, FlexLayout
 import { measureMap } from '../canvas/measure'
 import { fitBounds, stepZoom, unionRects, zoomAtPoint, clampScale } from '../canvas/camera'
 import { buildSampleDoc, uid } from './sample'
+import { buildWechatDoc } from './wechat'
 import { topLevelOnly } from '../canvas/hitTest'
 import { parseHash } from './links'
 import { pageArtboards, pageOfNode } from './doc'
@@ -19,6 +20,7 @@ import {
   renameDocMeta,
   restoreDocMeta,
   setCurrentDocId,
+  startRemoteWatch,
   trashDocMeta,
   writeDocRaw,
 } from './docs'
@@ -127,6 +129,14 @@ const bootLink = parseHash(window.location.hash)
 // Deep links may target another file: `#/f/<doc>/…` switches the boot document before capture.
 if (bootLink.docId && bootLink.docId !== currentDocId() && listDocs().some((d) => d.id === bootLink.docId)) {
   setCurrentDocId(bootLink.docId)
+}
+// Demo seed: `#wechat` creates and opens the WeChat design file, then clears the
+// hash so file switching/reloads don't keep bouncing back to it.
+if (window.location.hash === '#wechat') {
+  const existing = listDocs().find((d) => d.name === '微信')
+  if (existing) setCurrentDocId(existing.id)
+  else setCurrentDocId(createDocMeta('微信', buildWechatDoc()).id)
+  history.replaceState(null, '', window.location.pathname + window.location.search)
 }
 /** Document this app instance owns — captured at boot so other tabs can't redirect saves. */
 const BOOT_DOC_ID = currentDocId()
@@ -2477,6 +2487,35 @@ export function startPersistence() {
       }
     }, 400)
   })
+}
+
+/** Adopt a server-side revision (MCP or another tab) without a reload. */
+export function applyExternalDoc(doc: Doc) {
+  if (!doc || !Array.isArray(doc.pages) || !doc.nodes) return
+  pageCameras.clear()
+  undoStack.length = 0
+  redoStack.length = 0
+  const pageId = doc.pages.some((p) => p.id === state.ui.pageId) ? state.ui.pageId : doc.pages[0]?.id ?? ''
+  setState({
+    ...state,
+    doc,
+    ui: {
+      ...state.ui,
+      pageId,
+      selection: state.ui.selection.filter((id) => doc.nodes[id]),
+      hoverId: null,
+      dropTargetId: null,
+      editingId: null,
+      pathEdit: null,
+      marquee: null,
+    },
+  })
+  zoomToFit()
+}
+
+/** Start polling the SQLite store for external edits; call once after the first render. */
+export function startServerSync() {
+  startRemoteWatch(applyExternalDoc)
 }
 
 export function resetDocument() {

@@ -1,7 +1,6 @@
 import { useLayoutEffect, useRef } from 'react'
 import type { Rect } from '../model/types'
 import { useEditor } from '../model/store'
-import { pageArtboards } from '../model/doc'
 import { useMeasuresVersion, measureMap } from './measure'
 
 const ACCENT = '#4C94FB' // --color-blue-3: oklch(67% .17 258)
@@ -49,20 +48,7 @@ export function Hud() {
 
     const selection = new Set(ui.selection)
 
-    // artboard labels
-    ctx.font = `400 11px ${HUD_FONT}`
-    ctx.textBaseline = 'alphabetic'
-    for (const id of pageArtboards(doc, ui.pageId)) {
-      const rect = measureMap.get(id)
-      if (!rect) continue
-      const view = toViewport(rect)
-      if (camera.scale < 0.18) continue
-      const node = doc.nodes[id]
-      const selected = selection.has(id)
-      const offset = 7 + Math.max(0, Math.min(3, 2 * camera.scale - 1))
-      ctx.fillStyle = selected ? 'rgba(0,0,0,0.8)' : 'rgba(0,0,0,0.5)'
-      ctx.fillText(node?.name ?? 'Artboard', Math.round(view.x) + 1, Math.round(view.y - offset - 2.5))
-    }
+    // artboard labels render as DOM (ArtboardLabels) — interactive click/double-click rename
 
     // hover outline
     if (ui.hoverId && !selection.has(ui.hoverId) && ui.hoverId !== ui.editingId) {

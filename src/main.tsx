@@ -1,7 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import App from './App'
-import { createDocMeta, setCurrentDocId } from './model/docs'
+import { createDocMeta, hydrateFromServer, setCurrentDocId } from './model/docs'
 import './styles.css'
 
 async function seedDocFromUrl(): Promise<boolean> {
@@ -28,11 +27,17 @@ async function seedDocFromUrl(): Promise<boolean> {
   return false
 }
 
-seedDocFromUrl().then((seeded) => {
-  if (seeded) return // navigation in flight
+async function boot() {
+  if (await seedDocFromUrl()) return // navigation in flight
+  // Pull the SQLite store into localStorage before the store module boots.
+  await hydrateFromServer()
+  const [{ default: App }, store] = await Promise.all([import('./App'), import('./model/store')])
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <App />
     </StrictMode>,
   )
-})
+  store.startServerSync()
+}
+
+void boot()

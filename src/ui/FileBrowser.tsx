@@ -13,6 +13,7 @@ import {
   toggleFileBrowser,
   useEditor,
 } from '../model/store'
+import { buildWechatDoc } from '../model/wechat'
 import {
   createFolder,
   currentDocId,
@@ -226,6 +227,13 @@ export function FileBrowser() {
                 <>
                   <button className="ghost-button" onClick={() => void importFileJson()}>
                     <Icon name="import" size={12} /> Import
+                  </button>
+                  <button
+                    className="ghost-button"
+                    data-tooltip="Create the WeChat design template"
+                    onClick={() => createFile('微信', buildWechatDoc())}
+                  >
+                    <Icon name="plus" size={12} /> 微信 demo
                   </button>
                   <button className="ghost-button accent" onClick={() => createFile()}>
                     <Icon name="plus" size={12} /> New file
